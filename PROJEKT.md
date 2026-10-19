@@ -81,13 +81,16 @@ OFFENE_PUNKTE.md           Offene Punkte + kritische Fragen
 | Datum | Schritt | Verifiziert |
 |---|---|---|
 | 19.10.2026 | Repo-Scaffold, `git init -b main`, 3 Samples geschrieben + alle `selftest` grün (3 Bugs gefunden und gefixt: Erlang-Einheiten, PII-Regex, V3-Bereich, `--anfall`-Flag) | Ja — 3 Selftests grün, `py_compile` OK |
-| 19.10.2026 | 10 Dossiers `docs/` (per Subagenten), `LICENSE`, `CLAUDE.md` (Vorgabe, Schutzdatei), `.gitignore`, `ci.yml`, `OFFENE_PUNKTE.md` | In Prüfung |
+| 19.10.2026 | 11 Dossiers `docs/` 00-10 (per Subagenten, teils direkt), `LICENSE`, `CLAUDE.md`, `.gitignore`, `ci.yml`, `OFFENE_PUNKTE.md`, `README.md`, `PROJEKT.md` | Ja — alle selftests + `py_compile` + Doku-Linkcheck grün |
+| 19.10.2026 | Schreibung-Sanierung (ß→ss, latinisiert→Umlaut) über ganzes Repo; `docs/02-entscheidsmatrix.md` ergänzt (Facetten→Doku) | Ja — Audit: kein ß, keine latinisierten Formen |
+| 19.10.2026 | Org-Repo `GRADweight/grad-contactcenter` angelegt, `main` gepusht + per API verifiziert (privat, alle Dateien vorhanden) | Ja — `gh api` bestätigt |
 
 ## Nächstes
 
-- [ ] 10 Dossiers auf vollständigkeit verifizieren (read_file, nicht nur self-Report).
-- [ ] `README.md`-Inhaltsverzeichnis + Grenzen + Stand-Zeile.
-- [ ] `CONTRIBUTING.md` (Referenz-Nutzung, `selftest`-Pflicht für neue Samples).
-- [ ] Commit + `gh auth setup-git` + `git push` nach `GRADweight/grad-contactcenter`.
-- [ ] `CODE.md`-Zeile ergänzen.
+- [x] 11 Dossiers auf Vollständigkeit verifiziert (read_file, byte-Zähl, kein Truncation).
+- [x] `README.md`-Inhaltsverzeichnis + Grenzen + Stand-Zeile.
+- [x] `CONTRIBUTING.md` + `CLAUDE.md` + `README.md`.
+- [x] Commit + `gh auth setup-git` + `git push` nach `GRADweight/grad-contactcenter`.
+- [x] `CODE.md`-Zeile ergänzt.
 - [ ] 25.10.2026-Launch-Prüfung: sichtbar machen, wenn Edin entscheidet.
+- [ ] (nächster Pass) pro Use-Case ein 20-50-Fall Quality-Testset (s. OFFENE_PUNKTE.md #8).
