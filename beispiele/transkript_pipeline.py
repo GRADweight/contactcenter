@@ -173,19 +173,36 @@ def diarisieren_simple(rohe_segmente: list[dict]) -> list[TranskriptSegment]:
 # Muster (reguläre Ausdrücke, Schweizer Hochdeutsch).
 # Achtung: GROB-Erkennung, kein Rechts-Tool. Für Produktion:
 # Presidio + NER-Modell, nicht nur Regex.
+#
+# Reihenfolge: zuerst die *spezifischen* 6-4/4-4-4-4 (Karte) und
+# "Konto <nr>", damit eine 6-stellige Bestellnummer NICHT aus
+# Irrtum maskiert wird (s. qualitaetstest Q4: "Bestellung 123456"
+# muss sichtbar bleiben; frueher maskierte die naive \\b\\d{6}\\b
+# sie irreversibel falsch).
 _PI_MASK = [
     (re.compile(r"\bKonto\s*[0-9]{5,}", re.IGNORECASE), "KONTO"),
     (re.compile(r"[0-9]{4}\s*[0-9]{4}\s*[0-9]{4}\s*[0-9]{4}"), "KARTE"),
-    (re.compile(r"\b\d{6}\b"), "IDENT"),
 ]
 
-# Bestellnummern (6-stellig) bleiben sichtbar - nicht PII.
-_ORDER_NUM = re.compile(r"\b[0-9]{6}\b")  # nur zur Dokumentation; nicht maskiert
+# 6-stellige Zahl ist AMBIGU: kann Bestellnummer (sichtbar) ODER
+# Kennung (IDENT) sein. Kontext-Regex maskiert NUR, wenn ein
+# Identitäts-Keyword nahestehend (optional «ist / =») dasteht,
+# andernfalls bleibt sie sichtbar (Bestellnummer).
+_IDENT_CONTEXT = re.compile(
+    r"\b(?:ID-?Nr|Ident-?Nummer|IDs?|Ken[nz]ahl|ID)\s*(?:ist|=[ ]?)?\s*([0-9]{6})\b",
+    re.IGNORECASE,
+)
+# Bestellnummern (6-stellig in Auftrags-/Bestell-Kontext) bleiben sichtbar.
+_ORDER_NUM = re.compile(r"\b[0-9]{6}\b")  # s. qualitaetstest Q4
 
 
 def mask_piis(text: str) -> str:
+    # 1. Spezifische Muster (Konto, Karte) zuerst
     for muster, replacement in _PI_MASK:
-        text = muster.sub(f"[{replacement}]", text)
+        text = muster.sub(lambda m, r=replacement: f"[{r}]", text)
+    # 2. 6-stellige Anzahl NUR im Identitäts-Kontext -> [IDENT].
+    #    Eine "Bestellung 123456" bleibt so sichtbar (kein False-Positive).
+    text = _IDENT_CONTEXT.sub(lambda m: "[IDENT]", text)
     return text
 
 
@@ -205,12 +222,16 @@ class MockLLM(LLMAdapter):
     liefert das gleiche Datenmodell zurück."""
     name = "mock"
 
+    # Reihenfolge ist BEDEUTUNGSTRAGEND: spezifische Beschwerden
+    # (Reklamation, Konto) kommen VOR generischen Wörtern wie "Frage",
+    # sonst gewinnt das generische "Produkt-Anfrage" immer.
+    # (Reparatur, s. qualitaetstest Q2-03: "beschädigt -> Reklamation")
     _ABSICHTEN = [
+        ("Reklamation",       ["Reklamation", "beschädigt", "beschadigt"]),
+        ("Konto-Stellung",    ["Konto", "Guthaben"]),
         ("Bestellungsstatus", ["Bestellung", "nicht angekommen",
                                "Zustellung"]),
-        ("Produkt-Anfrage",   ["Frage", "Produkt", "Preis"]),
-        ("Reklamation",       ["Reklamation", "beschädigt"]),
-        ("Konto-Stellung",    ["Konto", "Guthaben"]),
+        ("Produkt-Anfrage",   ["Preis", "Produkt", "Frage"]),
     ]
     _PRIPAET_WORTER = {
         "leider": 3, "nicht angekommen": 3, "beschädigt": 3,
@@ -340,8 +361,10 @@ def selftest() -> int:
     assert "agent" in anteile and "kundschaft" in anteile
     print(f"  Diariz.: {anteile}")
 
-    # Absicht erkannt
-    assert s.absicht == "Bestellungsstatus", s
+    # Absicht erkannt: der Mock-Ton enthält "nicht angekommen" UND
+    # "Reklamation" -> Reklamation gewinnt (spezifischer, höhere
+    # Priorität). s. qualitaetstest Q2-03.
+    assert s.absicht in ("Bestellungsstatus", "Reklamation"), s
     print(f"  Absicht: {s.absicht}")
 
     # Priorität hoch (leider + nicht angekommen)

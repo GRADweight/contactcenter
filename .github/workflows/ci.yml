@@ -32,7 +32,8 @@ jobs:
           python -m py_compile \
             beispiele/transkript_pipeline.py \
             beispiele/skalierungsrechner.py \
-            beispiele/handoff_router.py
+            beispiele/handoff_router.py \
+            beispiele/qualitaetstest.py
           echo "  Alle Python-Dateien compilen"
 
       - name: 2) Selftests (kein Netz, kein API-Key)
@@ -44,11 +45,18 @@ jobs:
           echo "  - handoff_router selftest -"
           python beispiele/handoff_router.py selftest
 
-      - name: '3) Skalierungsrechner Demo-Szenario 200 Tag 10 zugleich'
+      - name: '3) Qualitäts-Suite Q1-Q4 (Routing/Absicht/Skalierung/Sicherheit)'
+        run: |
+          python beispiele/qualitaetstest.py
+          # exit-Code 1 bei rotem Test bricht das Gate
+
+      - name: '4) Skalierungsrechner Demo-Szenario 200 Tag 10 zugleich'
         run: |
           python beispiele/skalierungsrechner.py rechner 200 10
+          echo '  A100-80 muss im Ergebnis vorkommen:'
+          python beispiele/skalierungsrechner.py rechner 200 10 | grep -q "A100-80"
 
-      - name: '4) Doku-Linkcheck (keine toten Links in den Dossiers)'
+      - name: '5) Doku-Linkcheck (keine toten Links in den Dossiers)'
         run: |
           python - <<'PY'
           import os, re, glob

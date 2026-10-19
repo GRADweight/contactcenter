@@ -46,12 +46,15 @@ class Vertraulichkeitsstufe:
     verbindung: str   # wer darf lesen
 
 
-# Die 5 Stufen - bewusst simpel (s. doku für die Vollversion)
-V0 = Vertraulichkeitsstufe(0, "öffentlich", True, True, 0.0, "alle")
-V1 = Vertraulichkeitsstufe(1, "normal",   True, True, 0.5, "agent")
-V2 = Vertraulichkeitsstufe(2, "intern",   True, False, 1.0, "fachabteil")
-V3 = Vertraulichkeitsstufe(3, "vertraulich", True, False, 3.0, "leiter")
-V4 = Vertraulichkeitsstufe(4, "streng",   True, False, 10.0, "leitung")
+# Die 5 Stufen - bewusst simpel (s. doku/06 für die Vollversion).
+# cloud-Flag = "dürfen Roh-Ton + Transkript in Managed Cloud liegen".
+# Regel: nur V0 (öffentlich) und V1 (normal) sind cloud-fähig.
+# V2 intern / V3 vertraulich / V4 streng bleiben lokal (CH-Region).
+V0 = Vertraulichkeitsstufe(0, "öffentlich",       True,  True,  0.0, "alle")
+V1 = Vertraulichkeitsstufe(1, "normal",           True,  True,  0.5, "agent")
+V2 = Vertraulichkeitsstufe(2, "intern",           True,  False, 1.0, "fachabteil")
+V3 = Vertraulichkeitsstufe(3, "vertraulich",      True,  False, 3.0, "leiter")
+V4 = Vertraulichkeitsstufe(4, "streng",           True,  False, 10.0, "leitung")
 
 ALL_STUFEN = [V0, V1, V2, V3, V4]
 
@@ -137,6 +140,16 @@ ANFALL_KATALOG: dict[str, Anfall] = {
         risikoklasse=R0.wert,
         sla_tag=7.0,
     ),
+    # V4/GL-Fall (Coverage-Reparatur, s. qualitaetstest Q1-03): der
+    # Katalog deckte frueher nur V0-V3 ab - der strengste Fall
+    # (Geschaeftsleitung) war unerreichenbar. DSG-relevant.
+    "datenschutz-verstoss": Anfall(
+        "datenschutz-verstoss",
+        "Meldung eines Datenleck / DSG-Verstoss",
+        vertraulichkeitsstufe=V4.wert,
+        risikoklasse=R3.wert,
+        sla_tag=1.0,
+    ),
 }
 
 
@@ -217,9 +230,16 @@ def route_anfall(anfall_id: str, autonomiegrad_i_d: int = 0) -> dict:
 def selftest() -> int:
     print("== selftest: handoff_router ==")
 
-    # 1. Katalog hat 6 Einträge
-    assert len(ANFALL_KATALOG) == 6, ANFALL_KATALOG
+    # 1. Katalog hat 7 Einträge (seit Coverage-Reparatur: +datenschutz-verstoss V4)
+    assert len(ANFALL_KATALOG) == 7, ANFALL_KATALOG
     print(f"  Katalog: {len(ANFALL_KATALOG)} Anfall-Typen")
+
+    # 1b. Alle 4 Levels erreichbar (V1..V4), s. qualitaetstest Q1
+    levels = {route_anfall(a)["zuständiger_bereich"]
+              for a in ANFALL_KATALOG}
+    for lv in ("Kundendienst (1. Level)", "Fachbereich (2. Level)",
+               "Leitende (3. Level)", "Geschäftsleitung"):
+        assert lv in levels, f"Level {lv} unerreichenbar"
 
     # 2. Routing für den häufigsten Fall (Bestellungsstatus)
     res = route_anfall("bestellung-ankommen")

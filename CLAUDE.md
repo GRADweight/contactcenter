@@ -42,7 +42,7 @@ python3 beispiele/handoff_router.py selftest
 
 ## Architektur
 
-- `beispiele/skalierungsrechner.py` —
+- `beispiele/skalierungsrechner.py`  - 
   **Erlang-C-Queue** (lambda, Handhabung,
   Agenten, Wartezeit) plus **vLLM-Slots
   pro GPU** (7-14B / 30B / 70B AWQ) plus
@@ -50,7 +50,7 @@ python3 beispiele/handoff_router.py selftest
   24/7). CLI-Unterbefehle: `rechner`,
   `slots`, `kost`, `selftest`.
 - `beispiele/transkript_pipeline.py`
-  — 5-Etapen-Kette
+   -  5-Etapen-Kette
   Ton -> ASR (Mock
   faster-whisper) -> Diariz.
   -> PII-Mask -> LLM
@@ -61,7 +61,7 @@ python3 beispiele/handoff_router.py selftest
   Pseudocode-Adapter,
   kein Netz.
 - `beispiele/handoff_router.py`
-  — V0-V4
+   -  V0-V4
   Vertraulichkeit
   (V0 oeffentlich
   bis V4 streng)
@@ -101,7 +101,7 @@ sie auseinander.
 - **Nie auf main pushen** (Org-Repo), **nie Force-Push**,
   **nie Hooks umgehen**. Nicht umkehrbare Schritte
   (Repo loeschen, Sichtbarkeit aendern, Historie umschreiben,
-  Secrets) nie selbst ausfuehren — immer drucken/fragen.
+  Secrets) nie selbst ausfuehren  -  immer drucken/fragen.
 - **Geheime** nie in Dateien, Logs, Commits oder Ausgaengen.
 - Nur erfundene oder oeffentliche Daten; nie echte
   Kundendaten.
