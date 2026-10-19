@@ -1,0 +1,39 @@
+Copyright (c) 2026 GRADweight GmbH
+Alle Rechte vorbehalten.
+
+Dieses Repository (grad-contactcenter) enthaelt das Referenzmaterial der
+GRADweight GmbH fuer KI im Kundendienst / Voice-AI / Contact-Center im
+Schweizer Mittelstand: die zehnt Dossier-Reihe in `docs/`, drei lauffahige
+Referenz-Samples in `beispiele/` (Transkript-Pipeline, Skalierungsrechner,
+Handoff-Router), die Betriebs- und Skala-Doku sowie die Projekt- und
+Schulungs-Ableitungen. Es handelt sich um ein geschuetztes Werk.
+
+Alle Inhalte sind geistiges Eigentum der GRADweight GmbH.
+Wiedergabe, Vervielfaltigung, oeffentliche Nutzung oder Weitergabe an
+Dritte ist ohne vorherige schriftliche Genehmigung der GRADweight GmbH
+nicht gestattet.
+
+## Ausnahmen und Community
+
+- **Referenz-Nutzung**: Die Samples in `beispiele/` sind bewusst klein,
+  lauffahig und mit `selftest` ohne API-Keys oder Netz gehalten. Ihre
+  Verwendung als Ausgangspunkt fuer eigenen Code ist erlaubt, mit
+  Attribuition ("GRADweight GmbH, beispiele/transkript_pipeline.py,
+  v0.1.0").
+- **Beitraege** (neue Samples, Doku-Korrekturen, Ergaenzungen zu den
+  Tabellen): willkommen via Pull Request - s. `CONTRIBUTING.md`. Regel:
+  jeder neue Sample in `beispiele/` muss einen `selftest` enthalten, der
+  ohne Netz, ohne API-Keys und ohne externe Abhaengigkeiten (nur
+  Python-Standardbibliothek) gruen wird; er wird in `.github/workflows/ci.yml`
+  integriert.
+- Mit einem gemergten PR wird der Beitrag unter dieser Lizenz
+  veroeffentlichet (Contributor-Assign, keine gesonderte Abrede notig).
+
+## Grenzen dieses Werks
+
+Dieses Referenzwerk ist KEIN Rechtsrat, KEIN IT-Gutachten und KEIN
+Produkt. Alle Kostenangaben sind Groessenordnungen zum Stichtag Oktober
+2026 und wandern schneller als die Dokumente. Vor jeder Entscheidung
+ueber eine konkrete Bereitstellung, ein konkretes Modell oder einen
+konkreten Vertrag, die Daten region, die Regulatorik und die aktuellen
+Anbieterpreise neu gegen die jeweils aktuelle Doku pruefen.

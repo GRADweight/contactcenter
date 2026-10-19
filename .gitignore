@@ -1,0 +1,22 @@
+# Python / Projekt
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+*.local
+.audit/
+audit.jsonl
+
+# OS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Temp / Build
+*.log
+/tmp/
+.cache/

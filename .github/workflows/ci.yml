@@ -1,0 +1,68 @@
+name: ci
+
+# CI-Gate für grad-contactcenter: hartes Gate (grün/rot) über alle lauffähigen
+# Teile. Zwei Schichten:
+#   1) Syntax/Import  - alle .py compilen (schnell, ~30 s)
+#   2) Verhalten       - die drei Samples (selftest) deterministisch, ohne Netz
+#
+# Braucht NUR Python-Standardbibliothek. Kein Ollama, keine GPU, keine
+# API-Keys, kein Netzwerk - alles deterministisch, offline.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  syntax-and-behavior:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: 1) Alle .py compilen (Syntax + Import-Fehler)
+        run: |
+          python -m py_compile \
+            beispiele/transkript_pipeline.py \
+            beispiele/skalierungsrechner.py \
+            beispiele/handoff_router.py
+          echo "  Alle Python-Dateien compilen"
+
+      - name: 2) Selftests (kein Netz, kein API-Key)
+        run: |
+          echo "  - transkript_pipeline selftest -"
+          python beispiele/transkript_pipeline.py selftest
+          echo "  - skalierungsrechner selftest -"
+          python beispiele/skalierungsrechner.py selftest
+          echo "  - handoff_router selftest -"
+          python beispiele/handoff_router.py selftest
+
+      - name: '3) Skalierungsrechner Demo-Szenario 200 Tag 10 zugleich'
+        run: |
+          python beispiele/skalierungsrechner.py rechner 200 10
+
+      - name: '4) Doku-Linkcheck (keine toten Links in den Dossiers)'
+        run: |
+          python - <<'PY'
+          import os, re, glob
+          missing = []
+          for doc in glob.glob('docs/*.md'):
+              s = open(doc, encoding='utf-8').read()
+              for link in re.findall(r'\]\(([^)]+)\)', s):
+                  target = link.split('#')[0]
+                  if not target or target.startswith('http'):
+                      continue
+                  full = os.path.join(os.path.dirname(doc), target)
+                  if not os.path.exists(full):
+                      missing.append((doc, link))
+          print('  geprüfte Dossiers:', len(glob.glob('docs/*.md')))
+          assert not missing, f'tote Links: {missing}'
+          print('  keine toten Doku-Links')
+          PY
