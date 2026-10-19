@@ -1,4 +1,4 @@
-# Mitwirken an grad-contactcenter
+# Mitwirken an contactcenter
 
 Danke, dass du mitwirkst. Dies ist ein **Referenzwerk** der GRADweight
 GmbH für KI im Kundendienst / Voice-AI im Schweizer Mittelstand. Der

@@ -18,7 +18,7 @@ architektur.md, Etappe 6):
 - **3. Level**: V4 (streng), SLA < 1d,
   Zwei-Augen-Prüfung.
 
-**Autonomiegrad** (s. `grad-autonomy`):
+**Autonomiegrad** (s. `autonomy`):
 R0=5, R1=4, R2=3, R3=2. Jde Freigabe
 ist eine Menschliche Prüfung
 (Human-in-Loop, Grad 03+),
@@ -69,7 +69,7 @@ Anbindung ist Aufwand:
 ## 4. Grenzen (ehrlich)
 
 - **Kein Rechtsrat** - DSG/AI-Act
-  gehoert in `grad-governance`.
+  gehoert in `governance`.
 - **Keine Kalkulation** -
   Grössenordnungen, s.
   `OFFENE_PUNKTE.md` #1.
@@ -79,7 +79,7 @@ Anbindung ist Aufwand:
 - **Autonomiegrad**
   (R0-R3 -> Grad)
   ist Single-Source
-  `grad-autonomy`;
+  `autonomy`;
   hier nur referenziert.
 
 

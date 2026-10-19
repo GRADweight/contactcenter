@@ -2,7 +2,7 @@
 
 > **Stand: Oktober 2026.** Schulung ist
 > personenspezifisch, nicht generisch.
-> Was `grad-training` (L1-L3) liefert
+> Was `training` (L1-L3) liefert
 > und was nicht, siehe dort.
 
 ## 1. Die ehrliche Lücke
@@ -41,7 +41,7 @@ Gate-Pass).
 | CRM / Ticket | HubSpot API, n8n, SLA-Workflow | L1 |
 
 Die Stufen nach
-`grad-training`
+`training`
 (L1=Foundation,
 L2=Strategie,
 L3=Orchestration).

@@ -6,7 +6,7 @@
 
 ## 1. Die Methodik: Gates G0-G4 (Mikro)
 
-Nach `grad-governance`
+Nach `governance`
 (Gates G0-G8), hier ein KMU-
 **Mikro-Gate** (G0-G4):
 | Gate | Name | Was ist
@@ -48,7 +48,7 @@ erweitern.
   (s. `docs/10-betrieb-ops.md`).
 - **Kein Rechtsrat** für
   DSG/AI-Act (s.
-  `grad-governance`).
+  `governance`).
 
 ## 6. Kritische Fragen
 

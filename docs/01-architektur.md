@@ -105,23 +105,23 @@ platforms`):
   27B/35B-A3B (Edins Setup) oder Llama-4 / Mixtral,
   CH-Region. Kein Cloud-Aufruf.
 - *Stufe A/B gemischt:* Router (LiteLLM) mit Fallback-Kette
-  (s. `grad-platforms` `beispiele/model_router.py`).
+  (s. `platforms` `beispiele/model_router.py`).
 
 **RAG:** Vektor-DB (pgvector oder Qdrant, s. `docs/06-daten-
 speicherung.md`), 20-40 Chunks je Anfrage, *Permission-Aware*
 (niedrige Access-Levels sehen keine internen Chunks,
-s. `grad-platforms` `stack/services/rag/app.py`).
+s. `platforms` `stack/services/rag/app.py`).
 
-**Guardrails (nicht optional, s. `grad-governance`):**
+**Guardrails (nicht optional, s. `governance`):**
 - *Prompt-Injection-Schutz:* Input-Filter (NeMo Guardrails,
-  `grad-guardrails`, Regex, oder ein klassifizierendes
+  `guardrails`, Regex, oder ein klassifizierendes
   Small-Modell). Praeparierte Eingänge («vergiss alle
   Anweisungen», «du bist jetzt kein KI-System») werden
   erkannt und blockiert.
 - *Rate-Limiting:* Max 10 Anfragen / Minute / Key
   (Standard je `beispiele/model_router.py`).
 - *Konfidenz-Routing:* < 0.7 Konfidenz -> menschliche
-  Pruefung; > 0.9 -> autonom (grad-autonomy, Grad 03-04).
+  Pruefung; > 0.9 -> autonom (autonomy, Grad 03-04).
 - *Audit-Trail:* Jede Anfrage loggt wer/was/wann (Postgres
   `audit`, oder JSONL, s. `gw_core/audit.py`).
 - *DSG-Filter:* Sensitive Daten (V3-V4) gehen NIE in
@@ -171,7 +171,7 @@ nach der KI-Antwort) geht an den *nächsten Bereich*:
 - V2-V3 -> 2. Level (Fachbereich, SLA < 2d)
 - V4 -> 3. Level (Leitende / Gechaefsleitung, SLA < 1d)
 
-Mit **Autonomiegrad** (s. `grad-autonomy`): R0 (gering,
+Mit **Autonomiegrad** (s. `autonomy`): R0 (gering,
 Grad 5, keine Zwischenfreigabe) bis R3 (kritisch, Grad 2,
 Zwischen-Freigabe). Die SLA wird pro Ticket-Kategorie
 gesetzt (s. `beispiele/handoff_router.py` `sla_tag`).
@@ -202,10 +202,10 @@ billiger im Betrieb als Voice-Reply (TTS + ASR-Infrastruktur).
 
 ---
 
-## 4. Die GRADweight-Prinzipien (s. `grad-engineering`)
+## 4. Die GRADweight-Prinzipien (s. `engineering`)
 
 Jede Etappe folgt den GRADweight-Architektur-Prinzipien
-(aus `grad-engineering/docs/architektur.md`):
+(aus `engineering/docs/architektur.md`):
 
 **4.1 Kein Big-Ball-of-Mud.** Jede Etappe ist ein
 *spezialisiertes* Modul mit eigener Identität, eigenen
@@ -228,7 +228,7 @@ Keine davon ist ein Nice-to-have.
 
 **4.4 Modell-Router (Anti-Lock-In).** Die App ruft nie ein
 Modell direkt auf, sondern einen *Router* (LiteLLM oder
-`beispiele/model_router.py` von `grad-platforms`). Der
+`beispiele/model_router.py` von `platforms`). Der
 Router kennt pro Route eine Fallback-Kette
 (OpenAI -> Anthropic -> Ollama -> vLLM lokal). Ein
 Modell-Wechsel ist eine *Config-Änderung*, kein Projekt.
@@ -271,7 +271,7 @@ Embedding). Warum:
 *Config-Änderung* (`API_BASE = http://localhost:8000/v1` ->
 `http://ollama:11434/v1`), kein Projekt. Das ist der
 Grund, warum vier Bausteine *eine Plattform* sind
-(vgl. `grad-platforms/docs/offene-ai-plattform.md`).
+(vgl. `platforms/docs/offene-ai-plattform.md`).
 
 ---
 
@@ -299,7 +299,7 @@ Grund, warum vier Bausteine *eine Plattform* sind
 
 Die Open-Stack-Architektur (fuenf Bausteine statt einer
 Foundry) gibt zwei Dinge auf, die man nicht verschweigen
-darf (aus `grad-platforms/docs/offene-ai-plattform.md` §6):
+darf (aus `platforms/docs/offene-ai-plattform.md` §6):
 
 **7.1 Permission-Aware Grounding aus M365-Claims.** Foundry
 liest die echten M365-Graph-Permissions und backt sie in
@@ -320,7 +320,7 @@ einem Open Stack hier der teuerste Teil.
 
 ## 8. Grenzen (ehrlich)
 
-- **Kein Rechtsrat** (DSG/AI-Act) - s. `grad-governance`,
+- **Kein Rechtsrat** (DSG/AI-Act) - s. `governance`,
   `OFFENE_PUNKTE.md` #4.
 - **Keine 24/7-SLA im KMU-Standard** - s. `docs/10-
   betrieb-ops.md`.

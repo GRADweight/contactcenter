@@ -35,7 +35,7 @@ an vLLM gekoppelt ist.
 | **TensorRT-LLM** | Absolute Max-Perf. | NVIDIA-only, komplex |
 | **Cloud-API** | < 10M Token/Tag, keine GPU | Billiger als eine A100 |
 
-**Die faule Formel** (s. `grad-platforms`
+**Die faule Formel** (s. `platforms`
 `docs/gpu-deployment-entscheid.md`):
 
 ```
@@ -150,7 +150,7 @@ fuer die Skala-Tabelle
 ## 6. Grenzen (ehrlich)
 
 - **Keine rechtliche Anleitung** -
-  fuer DSG/AI-Act: `grad-governance`.
+  fuer DSG/AI-Act: `governance`.
 - **vLLM ist Nvidia-freundlich.**
   AMD (ROCm) ist aktuell, aber
   mittelmässig.

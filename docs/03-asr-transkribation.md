@@ -136,7 +136,7 @@ dokumentiert (s. `docs/00-unterfangen.md` §6 und das Sample).
 ## 8. Grenzen (ehrlich)
 
 - **Kein Rechtsrat** (DSG, Ton-Aufnahme, Nach-Erlaubnis) -
-  `grad-governance`, `OFFENE_PUNKTE.md` #4.
+  `governance`, `OFFENE_PUNKTE.md` #4.
 - **De-CH-Dialekt ist nicht gelöst, nur «mit Feintuning moeglich»**
   (§2.2, §6).
 - **Keine 20-50-Fall-WER-Test-Suite** im Repo (pro Projekt,

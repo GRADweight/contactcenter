@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Qualitaetstest-Suite für grad-contactcenter (nur Python-stdlib).
+"""Qualitaetstest-Suite für contactcenter (nur Python-stdlib).
 
 Idee (s. OFFENE_PUNKTE.md #8): Die drei Samples testen ihre EIGNE
 LOGIK intern. Diese Suite prüft ausserdem die QUALITÄT der

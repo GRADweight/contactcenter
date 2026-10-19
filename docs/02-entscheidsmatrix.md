@@ -20,7 +20,7 @@
 | 5 | Skills | 09 |
 | 6 | Wissen | 09 |
 | 7 | Betrieb | 10 |
-| 8 | Schulung | 09 + grad-training |
+| 8 | Schulung | 09 + training |
 | 9 | Technik (Inferenz) | 04 |
 | 10 | LLM-Transkribation | 03 |
 | 11 | vLLM | 04 |
@@ -51,7 +51,7 @@ Netz.
 
 - Kein Rechtsrat
   (DSG/AI-Act:
-  `grad-governance`).
+  `governance`).
 - Keine Kalkulation
   (Grössenordnungen,
   s. 08).

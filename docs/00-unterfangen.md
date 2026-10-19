@@ -26,15 +26,15 @@ Es hat mindestens **14 Facetten**, die ineinandergreifen:
 | Kosten & Aufwand | `docs/08-...` + `beispiele/skalierungsrechner.py` (Grössenordnungen) |
 | Skills | `docs/09-skill-wissen-schulung.md` (Skills-Matrix nach Rolle) |
 | Wissen | `docs/09-...` (ASR, RAG, vLLM, Governance, DSG - je Stufen) |
-| Schulung | `docs/09-...` + `grad-training` (L1/L2/L3) |
+| Schulung | `docs/09-...` + `training` (L1/L2/L3) |
 | Betrieb | `docs/10-betrieb-ops.md` (Runbooks, 8h vs 24/7) |
 | Technik (Inferenz) | `docs/04-vllm-inferenz.md` (PagedAttention, Quant, vLLM vs Ollama) |
 | LLM-Transkribation | `docs/03-asr-transkribation.md` (faster-whisper, Diariz., WER) |
 | vLLM & Skalierung | `docs/05-skalierung.md` + `beispiele/skalierungsrechner.py` (Erlang-C + Slots) |
 | Daten-Speicherung | `docs/06-daten-speicherung.md` (Kategorien, DSG, Vektor-DB, Lifecycle) |
 | Weiterleitung / Handoff | `docs/07-weiterleitung-handoff.md` (V0-V4, R0-R3, SLA, CRM) |
-| Governance / Rechte | `grad-governance` (DSG, AI-Act, Gates) - **nicht** hier |
-| Autonomie / Freigabe | `grad-autonomy` (Grad 01-05) - **nicht** hier definiert, nur referenziert |
+| Governance / Rechte | `governance` (DSG, AI-Act, Gates) - **nicht** hier |
+| Autonomie / Freigabe | `autonomy` (Grad 01-05) - **nicht** hier definiert, nur referenziert |
 
 **Das ist der ganze Kern:** ein Kundendienst-Projekt ist ein
 Kreuzprodukt aus diesen Facetten. Wer nur eine davon bearbeitet,
@@ -155,7 +155,7 @@ Vollmundigkeit:
   Disziplin. Dieses Repo sagt, **wo die Daten physisch liegen
   und wer sie sieht**; es sagt NICHT, was rechtlich erlaubt ist
   oder was die Mindest-Aufbewahrungsfrist ist. Dafür:
-  `grad-governance` + ein Rechtsbeistand.
+  `governance` + ein Rechtsbeistand.
 - **Keine Kalkulation.** Alle Kostenangaben sind **Grössenordnungen**
   (Stichtag 10/2026, vgl. `OFFENE_PUNKTE.md` #1). Vor jedem Angebot
   die drei Posten neu rechnen: (1) GPU-Infrastruktur, (2) Cloud-
@@ -216,11 +216,11 @@ wir, statt neu zu definieren:
 
 | Repo | Inhalt | Wie hier referenziert |
 |---|---|---|
-| `grad-governance` | GRADmap - DSG, AI-Act, ISO 42001, Gates G0-G8, KI-Reifegrad | `docs/06-daten-speicherung.md`, `OFFENE_PUNKTE.md` #4 (DSG) |
-| `grad-autonomy` | Autonomiegrade Grad 01-05, GB-01-16, Runtime-Bausteine | `beispiele/handoff_router.py` (R0-R3 -> Grad), `docs/07-...</handoff.md` |
-| `grad-platforms` | KI-Plattform-Katalog (Foundry/Bedrock/Vertex), 4-Baustein-Ministack, GPU-Entscheid, vLLM, 5-to-1000-Personen table | `docs/04-vllm-inferenz.md`, `docs/05-skalierung.md`, `docs/01-architektur.md` |
-| `grad-training` | GRADtrain - Schulung L1-L3 (Foundation, Strategie, Orchestration) | `docs/09-skill-wissen-schulung.md` (Schulung) |
-| `grad-engineering` | GRADbuild - Prozess-Automation Stufen 1-4, Gates, RAG, Guardrails | `docs/01-architektur.md` (RAG/Guardrail-Prinzipien) |
+| `governance` | GRADmap - DSG, AI-Act, ISO 42001, Gates G0-G8, KI-Reifegrad | `docs/06-daten-speicherung.md`, `OFFENE_PUNKTE.md` #4 (DSG) |
+| `autonomy` | Autonomiegrade Grad 01-05, GB-01-16, Runtime-Bausteine | `beispiele/handoff_router.py` (R0-R3 -> Grad), `docs/07-...</handoff.md` |
+| `platforms` | KI-Plattform-Katalog (Foundry/Bedrock/Vertex), 4-Baustein-Ministack, GPU-Entscheid, vLLM, 5-to-1000-Personen table | `docs/04-vllm-inferenz.md`, `docs/05-skalierung.md`, `docs/01-architektur.md` |
+| `training` | GRADtrain - Schulung L1-L3 (Foundation, Strategie, Orchestration) | `docs/09-skill-wissen-schulung.md` (Schulung) |
+| `engineering` | GRADbuild - Prozess-Automation Stufen 1-4, Gates, RAG, Guardrails | `docs/01-architektur.md` (RAG/Guardrail-Prinzipien) |
 | `gw-prototypen` | 25 PoCs (uv workspace), insbesondere `02-rechnungs-
    ekstraktion`, `01-...` (RAG) | `docs/03-asr-transkribation.md` (Transkriptions-Erkenntnis),
    `docs/06-daten-speicherung.md` (Vektor-DB) |
@@ -233,7 +233,7 @@ repo**, statt den Inhalt hier zu wiederholen.
 
 ## 8. Grenzen (ehrlich)
 
-- **Kein Rechtsrat** (DSG/AI-Act/ISO) - s. `grad-governance`
+- **Kein Rechtsrat** (DSG/AI-Act/ISO) - s. `governance`
 - **Keine Kalkulation** - nur Grössenordnungen, s. `OFFENE_PUNKTE.md` #1
 - **Kein 24/7-SLA** im KMU-Standard - s. `docs/10-betrieb-ops.md`
 - **Kein de-CH-Dialekt-ASR aus der Dose** - s. `docs/03-asr-
@@ -241,7 +241,7 @@ repo**, statt den Inhalt hier zu wiederholen.
 - **Keine CRM-Anbindung** (physische) - pro Projekt, s. `docs/07-
   weiterleitung-handoff.md`
 - **Keine Evaluierungs-Test-Suite für RAG-Antwortqualität** -
-  s. `grad-platforms` `stack/evals/run.py`, `OFFENE_PUNKTE.md` #8
+  s. `platforms` `stack/evals/run.py`, `OFFENE_PUNKTE.md` #8
 
 ---
 

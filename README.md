@@ -1,4 +1,4 @@
-# grad-contactcenter
+# contactcenter
 
 > **Stand: Oktober 2026.** KI im Kundendienst / Voice-AI /
 > Contact-Center für den Schweizer Mittelstand (KMU).
@@ -19,9 +19,9 @@ Was passiert mit den Daten? Wie skalieren wir auf 200 Anrufe/Tag
 oder 10 gleichzeitig?»
 
 Das ist **ein** Unterfangen, aber es hat **14 Facetten**.
-Bisher zerstreut in `grad-platforms` (Infrastruktur, Inferenz),
-`grad-governance` (DSG, AI-Act), `grad-autonomy` (Autonomiegrade),
-`grad-training` (Schulung). **Hier werden sie zu einem
+Bisher zerstreut in `platforms` (Infrastruktur, Inferenz),
+`governance` (DSG, AI-Act), `autonomy` (Autonomiegrade),
+`training` (Schulung). **Hier werden sie zu einem
 durchgehenden Dokument für den Kundendienst-Fall.**
 
 ## Die 14 Facetten (s. `docs/02`)
@@ -35,7 +35,7 @@ durchgehenden Dokument für den Kundendienst-Fall.**
 | 5 | Skills | 09 |
 | 6 | Wissen | 09 |
 | 7 | Betrieb | 10 |
-| 8 | Schulung | 09 · grad-training |
+| 8 | Schulung | 09 · training |
 | 9 | Technik (Inferenz) | 04 |
 | 10 | LLM-Transkribation (ASR) | 03 |
 | 11 | vLLM | 04 |
@@ -111,13 +111,13 @@ Postgres/pgvector (V2-V4 lokal), ~800-2600 CHF/Mo.
 4. **Ton-Speicher ist 550× grösser als Text**  - 
    ~732 MB/Tag Roh-Ton, nicht ~1.3 MB (Doku 11, §3).
    Falsch geschätzt → 550-fach zu kleines Budget.
-5. **DSG/AI-Act gehört nach `grad-governance` +
+5. **DSG/AI-Act gehört nach `governance` +
    Rechtsbeistand**  -  dieses Repo sagt WO die Daten liegen
    und WER sie sieht, nicht was rechtlich erlaubt ist.
 6. **24/7 ist 2 Köpfe, nicht 1**  -  8h-Betrieb + 1 KI-Owner
    (6h/Woche) ist der KMU-Default.
 7. **Autonomiegrade (Grad 01-05)** werden aus
-   `grad-autonomy` referenziert, nicht hier neu definiert.
+   `autonomy` referenziert, nicht hier neu definiert.
 
 ## Kritische Fragen
 

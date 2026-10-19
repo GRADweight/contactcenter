@@ -65,7 +65,7 @@ python beispiele/skalierungsrechner.py rechner 200 10
 
 ## 5. Skalierungstabelle (Voice, 5 -> 1000)
 
-Nach `grad-platforms` `selbstbau-blaupause.md` §4. Alle
+Nach `platforms` `selbstbau-blaupause.md` §4. Alle
 Kosten **Grössenordnungen** (10/2026, CH), keine Offerte:
 
 | Grösse | Inferenz | GPU | ~CHF/Mo |

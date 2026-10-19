@@ -39,7 +39,7 @@ Branche ODER vertraglich noetig.
   `docs/04-vllm-inferenz.md` 5.
 - **Langfuse** (Token, Kosten,
   Latenz, RAG-Score) s.
-  `grad-platforms/stack/observability/`.
+  `platforms/stack/observability/`.
   Fuer < 5 Pers.: Prometheus
   allein reicht.
 - **PII-Monitor**: `beispiele/
@@ -116,7 +116,7 @@ Grund.
 
 - **Kein Rechtsrat** -
   Rechtsbeistand +
-  `grad-governance`.
+  `governance`.
 - **Kein 24/7** im
   KMU-Standard.
 - **Kalkulation**

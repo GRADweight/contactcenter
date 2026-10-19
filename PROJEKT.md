@@ -1,6 +1,6 @@
-# PROJEKT.md  -  grad-contactcenter
+# PROJEKT.md  -  contactcenter
 
-**Repo:** `github.com/GRADweight/grad-contactcenter` (privat, bis Launch 25.10.2026 geprüft)
+**Repo:** `github.com/GRADweight/contactcenter` (privat, bis Launch 25.10.2026 geprüft)
 **Thema:** KI im Kundendienst / Voice-AI / Contact-Center für den Schweizer Mittelstand (KMU).
 **Stand:** 19.10.2026  -  zweiter Ausarbeitungspass.
 
@@ -14,9 +14,9 @@ skalieren wir auf 200 Anrufe/Tag oder 10 gleichzeitig?»
 Das ist **ein** Unterfangen, aber es **hat viele Facetten**: Projekt,
 Technologie, Kosten, Aufwand, Skills, Wissen, Betrieb, Schulung, Technik,
 LLM-Transkribation, vLLM, Skalierung, Daten-Speicherung, Weiterleitung.
-Bisher zerstreut in `grad-platforms` (Infrastruktur/Inferenz),
-`grad-governance` (DSG/AI-Act/Gates), `grad-autonomy` (Autonomiegrade),
-`grad-training` (Schulung). **Hier werden sie zu einem durchgehenden
+Bisher zerstreut in `platforms` (Infrastruktur/Inferenz),
+`governance` (DSG/AI-Act/Gates), `autonomy` (Autonomiegrade),
+`training` (Schulung). **Hier werden sie zu einem durchgehenden
 Dokument  -  für den Kundendienst-Fall, nicht abstrakt.**
 
 ## Ist-Zustand (19.10.2026, zweiter Pass)
@@ -38,7 +38,7 @@ OFFENE_PUNKTE.md           Offene Punkte + kritische Fragen
 
 ## Entschieden
 
-- **Name:** `grad-contactcenter` (grad- Prefix, breit: Sprache + Chat + alle Facetten).
+- **Name:** `contactcenter` (grad- Prefix, breit: Sprache + Chat + alle Facetten).
 - **Sichtbarkeit:** privat wie alle Org-Repos; für 25.10.2026-Launch-Prüfung freigegeben (nach Edin-Entscheidung).
 - **Härte der Technik:** lauffähige Samples mit `selftest` (grad-platforms-Muster).
 - **Hausstil:** Schweizer Hochdeutsch, «ss», keine Em-Dashes, Probleme vor Lob,
@@ -53,7 +53,7 @@ OFFENE_PUNKTE.md           Offene Punkte + kritische Fragen
    Managed-ASR vs On-Prem je nach Datenpflicht.
 3. 10-gleichzeitige Anrufe ist meist der bindende Faktor, nicht 200/Tag;
    vLLM-Slots pro GPU bestimmen die GPU-Anzahl.
-4. DSG/AI-Act/Aufbewahrung gehört nach grad-governance + Rechtsbeistand
+4. DSG/AI-Act/Aufbewahrung gehört nach governance + Rechtsbeistand
    (kein Rechtsrat hier).
 5. 24/7-SLA kostet 2 Köpfe, nicht 1; in der KMU-Default-Konfiguration
    ist 8h-Betrieb + 1 KI-Owner.
@@ -80,5 +80,5 @@ OFFENE_PUNKTE.md           Offene Punkte + kritische Fragen
 - [x] CI auf 5 Schritte erweitert
 - [x] PROJEKT.md aktualisiert
 - [ ] **OFFENE_PUNKTE.md #8 markieren als «abgeschlossen»** (pro-Use-Case Testset steht in qualitaetstest.py Q1-Q4)
-- [ ] `CODE.md` aktualisieren (grad-contactcenter Eintrag mit 12 Dossiers)
-- [ ] Commit + push nach `GRADweight/grad-contactcenter`
+- [ ] `CODE.md` aktualisieren (contactcenter Eintrag mit 12 Dossiers)
+- [ ] Commit + push nach `GRADweight/contactcenter`

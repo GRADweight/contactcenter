@@ -5,7 +5,7 @@
 > vLLM + Whisper) **technisch umsetzbar** ist, und legt die nötige
 > Hardware-Architektur fest. GPU-Preise (A100 80 GB ~2600 CHF/Mo)
 > wandern; vor jedem Angebot die aktuellen Anbieter-Preise neu prüfen
-> (s. `grad-platforms` → `gpu-deployment-entscheid.md`).
+> (s. `platforms` → `gpu-deployment-entscheid.md`).
 > **Keine Offerte, kein Rechtsrat.**
 
 ## 1. Die kurze Antwort
@@ -122,7 +122,7 @@ dem Ziel. Für Text-only-Chat/E-Mail (kein Voice): diese
 - **vLLM** ist die *einzige* GPU-kritische Instanz.
 - **ASR (faster-whisper)** läuft auf einem **separaten CPU-Core**
   mit GPU-Access (nicht in vLLM-Slots, keine Konkurrenz).
-- **Postgres + pgvector** für RAG + Tickets (`grad-platforms`
+- **Postgres + pgvector** für RAG + Tickets (`platforms`
   → `beispiele/rag_permission.py`, s. Doku 06 §3).
 - **V2-V4 Daten (Intern/Vertraulich/Streng) bleiben lokal**
   (Doku 06, §4 - `handoff_router`-Cloud-Flag `False` bei

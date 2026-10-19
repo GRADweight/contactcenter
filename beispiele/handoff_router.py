@@ -9,12 +9,12 @@ die Berechtigungen. Dieser Sample modelliert genau das.
 Die Logik: Jeder Anruf hat 4 Eigenschaften, die entscheiden:
   1. Vertraulichkeitsstufe (V0-V4, s. doku/05-daten-speicherung.md)
   2. Risiko (R0-R3, s. doku/06-weiterleitung.md)
-  3. Autonomiegrad (s. grad-autonomy: Grad 01–05)
+  3. Autonomiegrad (s. autonomy: Grad 01–05)
   4. SLA (wie lange darf das Ticket offen sein)
 
 Der Router rechnet daraus:
   - WELCHER Bereich zuständig ist (Fachbereich-Zugehörigkeit)
-  - WELCHES Autonomiegrad der KI erlaubt ist (grad-autonomy)
+  - WELCHES Autonomiegrad der KI erlaubt ist (autonomy)
   - WENN der Mensch in den Loop kommt (Freigabe-Schwelle)
   - WAS die SLA für dieses Ticket ist
 
@@ -66,7 +66,7 @@ ALL_STUFEN = [V0, V1, V2, V3, V4]
 class Risikoklasse:
     wert: int
     beschreibung: str
-    maximaler_autonomiegrad: int  # aus grad-autonomy
+    maximaler_autonomiegrad: int  # aus autonomy
     freigabe_zwisc_1mensch: bool
 
 
@@ -162,7 +162,7 @@ class Weiterleitung:
     anfall_id: str
     beschreibung: str
     zuständiger_bereich: str
-    autonomiegrad_mit_mensch: int   # aus grad-autonomy
+    autonomiegrad_mit_mensch: int   # aus autonomy
     autonomiegrad_maximal: int
     freigabe_mensch_zwischen: bool
     sla_tag: float
@@ -185,7 +185,7 @@ def route_anfall(anfall_id: str, autonomiegrad_i_d: int = 0) -> dict:
     Param
     -----
     anfall_id       : id aus ANFALL_KATALOG
-    autonomiegrad_i_d : Grad aus grad-autonomy (1-5). Falls 0,
+    autonomiegrad_i_d : Grad aus autonomy (1-5). Falls 0,
                        wird der maximale erlaubte Grad
                        aus der Risikoklasse abgeleitet.
     """

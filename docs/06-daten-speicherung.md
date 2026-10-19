@@ -1,7 +1,7 @@
 # 06 - Daten-Speicherung und Aufbewahrung
 
 > **Stand: Oktober 2026.** Kein Rechtsangebot. Vor jeder
-> Entscheidung Rechtsbeistand + `grad-governance` pruefen.
+> Entscheidung Rechtsbeistand + `governance` pruefen.
 
 ## 1. Die 5 Daten-Kategorien
 
@@ -82,7 +82,7 @@ V4 -> On-Prem, 2x Backup
 
 **Der Wechselpunkt** (~1M Chunks,
 < 100ms p95; s.
-`grad-platforms/selbstbau-
+`platforms/selbstbau-
 blupause.md`): pgvector ist
 der Flaschenhals, Qdrant
 zwingend. Pfad: 2-zeiliger
@@ -113,7 +113,7 @@ Ohne Quelle = keine Antwort
 
 - **Kein Rechtsrat** - DSG/
   DSGVO/AI-Act: Rechtsbeistand
-  + `grad-governance`.
+  + `governance`.
 - **PII-Masking** im Sample ist
   Regex (grob); Produktion:
   Presidio + NER.

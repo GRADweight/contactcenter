@@ -1,6 +1,6 @@
 name: ci
 
-# CI-Gate für grad-contactcenter: hartes Gate (grün/rot) über alle lauffähigen
+# CI-Gate für contactcenter: hartes Gate (grün/rot) über alle lauffähigen
 # Teile. Zwei Schichten:
 #   1) Syntax/Import  - alle .py compilen (schnell, ~30 s)
 #   2) Verhalten       - die drei Samples (selftest) deterministisch, ohne Netz
