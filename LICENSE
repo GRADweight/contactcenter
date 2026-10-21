@@ -1,39 +1,45 @@
+# GRADweight · contactcenter — MIT + kommerzielle Vorbehalte
+
+## MIT-Lizenz (für den Code)
+
 Copyright (c) 2026 GRADweight GmbH
-Alle Rechte vorbehalten.
 
-Dieses Repository (grad-contactcenter) enthaelt das Referenzmaterial der
-GRADweight GmbH fuer KI im Kundendienst / Voice-AI / Contact-Center im
-Schweizer Mittelstand: die zehnt Dossier-Reihe in `docs/`, drei lauffahige
-Referenz-Samples in `beispiele/` (Transkript-Pipeline, Skalierungsrechner,
-Handoff-Router), die Betriebs- und Skala-Doku sowie die Projekt- und
-Schulungs-Ableitungen. Es handelt sich um ein geschuetztes Werk.
+MIT License
 
-Alle Inhalte sind geistiges Eigentum der GRADweight GmbH.
-Wiedergabe, Vervielfaltigung, oeffentliche Nutzung oder Weitergabe an
-Dritte ist ohne vorherige schriftliche Genehmigung der GRADweight GmbH
-nicht gestattet.
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-## Ausnahmen und Community
+The above copyright notice and this permission notice (including this
+"FOR-KUNDEN"-Zusatz) shall be included in all copies or substantial portions
+of the Software.
 
-- **Referenz-Nutzung**: Die Samples in `beispiele/` sind bewusst klein,
-  lauffahig und mit `selftest` ohne API-Keys oder Netz gehalten. Ihre
-  Verwendung als Ausgangspunkt fuer eigenen Code ist erlaubt, mit
-  Attribuition ("GRADweight GmbH, beispiele/transkript_pipeline.py,
-  v0.1.0").
-- **Beitraege** (neue Samples, Doku-Korrekturen, Ergaenzungen zu den
-  Tabellen): willkommen via Pull Request - s. `CONTRIBUTING.md`. Regel:
-  jeder neue Sample in `beispiele/` muss einen `selftest` enthalten, der
-  ohne Netz, ohne API-Keys und ohne externe Abhaengigkeiten (nur
-  Python-Standardbibliothek) gruen wird; er wird in `.github/workflows/ci.yml`
-  integriert.
-- Mit einem gemergten PR wird der Beitrag unter dieser Lizenz
-  veroeffentlichet (Contributor-Assign, keine gesonderte Abrede notig).
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
-## Grenzen dieses Werks
+## Kommerzielle Vorbehalte (GRADweight) — FOR-KUNDEN
 
-Dieses Referenzwerk ist KEIN Rechtsrat, KEIN IT-Gutachten und KEIN
-Produkt. Alle Kostenangaben sind Groessenordnungen zum Stichtag Oktober
-2026 und wandern schneller als die Dokumente. Vor jeder Entscheidung
-ueber eine konkrete Bereitstellung, ein konkretes Modell oder einen
-konkreten Vertrag, die Daten region, die Regulatorik und die aktuellen
-Anbieterpreise neu gegen die jeweils aktuelle Doku pruefen.
+KI-Mitarbeiter im Contact-Center (Mail-, Chat-, Telefon-Triage).
+
+Zusätzlich zu den MIT-Rechten gilt:
+
+* **Der Code** dieses Repos ist frei nutzbar (MIT, s.o.).
+* **Nicht** Teil dieses Repos ist das kommerzielle Kalkulationsmaterial —
+  Preise, Angebotskataloge, ROI-Template, Verhandlungsplaybook.  Das liegt
+  intern (GRADweight/preismaterial, «Alle Rechte vorbehalten»).
+* **Der Berater-Dienst** (Installation, Betrieb, Schulung, SLA) ist ein
+  kommerzielles Angebot von GRADweight GmbH und unterliegt «Alle Rechte
+  vorbehalten», sofern nicht schriftlich abweichend vereinbart.
+* **Attribution**: Nutzung als Ausgangspunkt für eigenen Code ist erlaubt;
+  Attribution «GRADweight GmbH, contactcenter, v1» wird empfohlen.
+
+GRADweight GmbH · gradweight.ch → GRADweight GmbH (ein KMU-Unternehmen)
+Kontakt: edin@gradweight.ch

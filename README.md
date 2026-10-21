@@ -141,7 +141,7 @@ beispiele/
   qualitaetstest.py          Qualitäts-Gate Q1-Q4 (4 echte Defekte gefixt)
 docs/                        12 Dossiers 00-11 (s. 02-entscheidsmatrix.md)
 .github/workflows/ci.yml      compile + 3 selftest + Qualität + Linkcheck
-LICENSE                       Alle Rechte vorbehalten, GRADweight GmbH
+LICENSE                       MIT (Code) + kommerzielle Vorbehalte, GRADweight GmbH
 PROJEKT.md · OFFENE_PUNKTE.md · CONTRIBUTING.md · CLAUDE.md · README.md
 (CLAUDE.md ist optional  -  kein Sample/CI-Gate hängt daran)
 ```
@@ -157,5 +157,7 @@ PROJEKT.md · OFFENE_PUNKTE.md · CONTRIBUTING.md · CLAUDE.md · README.md
 
 ## Kontakt
 
-Alle Rechte vorbehalten  -  GRADweight GmbH.
+**MIT** für den Code (frei nutzbar) + **kommerzielle Vorbehalte**
+(GRADweight GmbH): Kalkulationsmaterial liegt intern (`GRADweight/
+preismaterial`).
 Fragen: mail@gradweight.ch
