@@ -161,3 +161,7 @@ PROJEKT.md · OFFENE_PUNKTE.md · CONTRIBUTING.md · CLAUDE.md · README.md
 (GRADweight GmbH): Kalkulationsmaterial liegt intern (`GRADweight/
 preismaterial`).
 Fragen: mail@gradweight.ch
+
+
+---
+> **Pruefen vor Public:** `SICHERHEIT_UND_GRENZEN.md` — Bekannte Fehler, Haftung, Lizenz-Erklaerung (ein Satz je Repo).

@@ -1,45 +1,23 @@
-# GRADweight · contactcenter — MIT + kommerzielle Vorbehalte
-
-## MIT-Lizenz (für den Code)
-
-Copyright (c) 2026 GRADweight GmbH
-
 MIT License
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+Copyright (c) 2026 GRADweight GmbH, edin@gradweight.ch
 
-The above copyright notice and this permission notice (including this
-"FOR-KUNDEN"-Zusatz) shall be included in all copies or substantial portions
-of the Software.
+Permission is hereby granted, free of charge, to any person obtaining a copy of this
+software and associated documentation files, to deal in the software without restriction,
+including without limitation the rights to use, copy, modify, merge, publish, distribute,
+sublicense, and/or sell copies of the software, and to permit persons to whom the software
+is furnished to do so, subject to the following conditions:
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+The above copyright notice and this permission notice shall be included in all copies or
+substantial portions of the software.
 
-## Kommerzielle Vorbehalte (GRADweight) — FOR-KUNDEN
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
 
-KI-Mitarbeiter im Contact-Center (Mail-, Chat-, Telefon-Triage).
-
-Zusätzlich zu den MIT-Rechten gilt:
-
-* **Der Code** dieses Repos ist frei nutzbar (MIT, s.o.).
-* **Nicht** Teil dieses Repos ist das kommerzielle Kalkulationsmaterial —
-  Preise, Angebotskataloge, ROI-Template, Verhandlungsplaybook.  Das liegt
-  intern (GRADweight/preismaterial, «Alle Rechte vorbehalten»).
-* **Der Berater-Dienst** (Installation, Betrieb, Schulung, SLA) ist ein
-  kommerzielles Angebot von GRADweight GmbH und unterliegt «Alle Rechte
-  vorbehalten», sofern nicht schriftlich abweichend vereinbart.
-* **Attribution**: Nutzung als Ausgangspunkt für eigenen Code ist erlaubt;
-  Attribution «GRADweight GmbH, contactcenter, v1» wird empfohlen.
-
-GRADweight GmbH · gradweight.ch → GRADweight GmbH (ein KMU-Unternehmen)
-Kontakt: edin@gradweight.ch
+---
+## Warum diese Lizenz (ein Satz)
+Code + Designs vor Public; internes PROJEKT.md/OFFENE_PUNKTE lokal entfernt.
