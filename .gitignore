@@ -1,25 +1,32 @@
-# Python / Projekt
+# Python
 __pycache__/
 *.py[cod]
 *.egg-info/
 .venv/
 venv/
+build/
+dist/
+
+# Werkzeuge
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Laufzeitdaten und Geheimnisse
 .env
+deploy/.env
 *.local
 .audit/
 audit.jsonl
+eval-bericht.json
+latenz-bericht*.json
 
-# OS
+# Betriebssystem und Editoren
 .DS_Store
-
-# IDE
 .vscode/
 .idea/
-
-# Temp / Build
-*.log
-/tmp/
-.cache/
-
-# Evals
-eval-bericht.json
