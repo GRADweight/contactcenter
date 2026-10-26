@@ -1,7 +1,14 @@
+{
+	# Interne Ports über 1024: Caddy braucht keine Root-Rechte.
+	http_port 8080
+	https_port 8443
+	# Genesys spricht nur wss://; HTTP dient allein der ACME-Challenge.
+	auto_https disable_redirects
+}
+
 {$DOMAIN} {
-	# Genesys verbindet nur über wss:// (TLS). Caddy holt das Zertifikat selbst.
-	reverse_proxy voiceagent:8080
-	# Metriken und Health nicht öffentlich
+	# Metriken und Health nie öffentlich
 	@intern path /metrics /healthz
 	respond @intern 404
+	reverse_proxy agent:8080
 }
