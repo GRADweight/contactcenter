@@ -178,12 +178,21 @@ def test_q3_model_gut_passen_70b_auf_a100_80():
 
 
 def test_q3_latenz_voice_reply_reichbar():
-    """Voice-Reply (6 Etappen mit Prefix-Caching) < 1500 ms."""
+    """Zeit bis erster Ton (inkl. Endpointing, mit Prefix-Caching) < 1000 ms."""
     lat = sr.laten_z_pruefen(prefix_caching=True)
-    assert lat["erfullt"] and lat["geschatzte_zeit_ms"] < 1500, lat
-    # Ohne Prefix-Caching: länger (200ms TTFT statt 80ms)
+    assert lat["erfullt"] and lat["geschatzte_zeit_ms"] < 1000, lat
+    # Ohne Prefix-Caching: länger (250 ms TTFT statt 80 ms) und über Ziel
     lat_no = sr.laten_z_pruefen(prefix_caching=False)
     assert lat_no["geschatzte_zeit_ms"] > lat["geschatzte_zeit_ms"]
+    assert not lat_no["erfullt"], "ohne Prefix-Caching ist 1 s nicht zu halten"
+    return True
+
+
+def test_q3_keine_ueberdimensionierte_gpu():
+    """10 Anrufe mit 7B brauchen keine A100 (2. Überarbeitung)."""
+    full = sr.szenario(200, 10)
+    assert full["inferenz"]["gpu"] != "A100-80", full["inferenz"]
+    assert full["inferenz"]["gpu_kost_chf_monat"] < 1000, full["inferenz"]
     return True
 
 
@@ -234,6 +243,7 @@ ALL_TESTS = [
     ("Q3", "Audio dominiert Speicher", test_q3_audio_dominiert_speicher),
     ("Q3", "Modell passt auf GPU",     test_q3_model_gut_passen_70b_auf_a100_80),
     ("Q3", "Latenz Voice-Reply",       test_q3_latenz_voice_reply_reichbar),
+    ("Q3", "Keine Überdimensionierung", test_q3_keine_ueberdimensionierte_gpu),
     ("Q4", "PII-Masking",              test_q4_pii_masking),
     ("Q4", "V3-V4 kein Cloud",         test_q4_v3_v4_kein_cloud),
 ]

@@ -10,7 +10,7 @@ und kein Rechtsrat.
 - **Korrektur in einem Dossier** (veralteter Modell- oder Toolname,
   fehlende Quellenangabe, falscher Wert in einer Tabelle):
   willkommen, bitte `git blame`-Quelle im Commit-Message angeben.
-- **Neues Beispiels-Script in `beispiele/`**:
+- **Neues Beispiel-Script in `beispiele/`**:
   **Bedingung**: jedes neue Sample MUSS einen `python beispiele/<name>.py
   selftest` enthalten, der
   - ohne Netz, ohne API-Keys, ohne externe Abhängigkeiten
@@ -31,13 +31,24 @@ und kein Rechtsrat.
 - Em-Dashes in Text (benutz `-` oder `–` korrekt)
 - Lob-Reden über das Projekt, ohne die Grenzen mit anzugeben
 
+## Änderungen am Paket `voiceagent/`
+
+- Kern bleibt **nur Standardbibliothek**; Fremdpakete nur in `adapters/`
+  oder `server.py`, und dort optional importiert.
+- Jede Änderung braucht grüne Tests **und** ein bestandenes Eval-Gate:
+  `python -m unittest discover -s tests` und `python evals/run_evals.py`.
+- Neues Verhalten (Anliegen, Werkzeug, Leitplanke) bekommt mindestens
+  einen Eval-Fall in `evals/faelle.json`.
+- Policy-Werte (V0-V4, R0-R3, SLA) nur zusammen mit
+  `beispiele/handoff_router.py` ändern; `tests/test_kern.py` prüft das.
+
 ## Referenz-Nutzung
 
-Die drei lauffähigen Samples in `beispiele/` sind als Ausgangspunkt gedacht.
-Du darfst sie in deinem eigenen Code verwenden, mit Attribution
-`"GRADweight GmbH, beispiele/<name>, v0.1.0"`. Die Lizenz ist
-«Alle Rechte vorbehalten»; die Referenz-Nutzung ist in der LICENSE
-explizitamente erlaubt.
+Code in `voiceagent/`, `beispiele/`, `evals/` und `tests/` steht unter
+**MIT** (s. `LICENSE`) und darf frei verwendet werden. Attribution
+«GRADweight GmbH, contactcenter, v2» ist erwünscht. Die kommerziellen
+Vorbehalte in der `LICENSE` betreffen Beratung und Kalkulationsmaterial,
+nicht den Code.
 
 ## Sitzungs-Matik (für interne Arbeit)
 

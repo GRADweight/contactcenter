@@ -8,6 +8,14 @@
 > (s. `platforms` → `gpu-deployment-entscheid.md`).
 > **Keine Offerte, kein Rechtsrat.**
 
+> **Korrektur v2 (26.10.2026):** Die Empfehlung «1x A100 80 GB» ist für
+> 10 Gespräche mit einem 7-8-B-Modell rund 4x überdimensioniert. Aus
+> KV-Cache, Bandbreite und Duty Cycle gerechnet reicht **1x L4 24 GB**
+> (~700 CHF/Mo); Telefon-Audio ist G.711 8 kHz (366 statt 732 MB/Tag);
+> die Latenz-Summe unten enthält kein Endpointing. Massgeblich ist
+> [`docs/12`](12-zielarchitektur.md) und `python -m voiceagent.sizing`.
+> Der Text unten bleibt als Herleitung von v1 stehen.
+
 ## 1. Die kurze Antwort
 
 **Ja, es ist technisch umsetzbar - auf einer einzelnen A100 80 GB.**

@@ -20,3 +20,6 @@ audit.jsonl
 *.log
 /tmp/
 .cache/
+
+# Evals
+eval-bericht.json

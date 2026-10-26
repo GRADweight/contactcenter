@@ -3,6 +3,11 @@
 > **Stand: Oktober 2026.** GPU-Preise und vLLM-Slots wandern.
 > Vor jedem Angebot neu rechnen - s. `OFFENE_PUNKTE.md` #1.
 
+> **Korrektur v2 (26.10.2026):** Slots pro GPU sind Daumenwerte. Genauer
+> rechnet `python -m voiceagent.sizing` aus KV-Cache, Bandbreite und
+> Duty Cycle (10 Gespräche = ~2 parallele LLM-Anfragen). Ergebnis für
+> 10 Gespräche mit 8 B: 1x L4 statt 1x A100. Siehe [`docs/12`](12-zielarchitektur.md).
+
 ## 1. Die zentraelle Falle: ein Wort, zwei Probleme
 
 «200 Anrufe/Tag ODER 10 zugleich» klingt gleich, ist aber **zwei
@@ -27,11 +32,11 @@ Beide müssen gleichzeitig erfüllt sein. 200/Tag schafft man
 ```
 
 **Der GIPFELSTUNDE-Trick:** 200/Tag ist *nicht* die Last.
-Fakt: **0.25** (25% des Tages in 1 GIPFEL-STUNDE). Für 200/Tag
-bei 8 GS-Stunden = 25/Stunde, GIPFEL = 25*0.25 = **~6 Anruufe**
-in 15 Min. Bei 2 min = A = 0.2 Erlangs. **1 Agent reicht.**
-200/Tag ist in den meisten KMU *kein* Problem; der Engpass
-ist fast nie die Warteschlange.
+Konservative Annahme: **25 %** des Tagesvolumens fallen in die
+geschäftigste Stunde, also 200 x 0.25 = **50 Anrufe/Stunde**.
+Bei 2 min pro Anruf: A = 50/60 x 2 = **1.67 Erlang** -> **3 Agenten**
+für < 20 s mittlere Wartezeit (Wq 13.5 s). Der Faktor 0.25 ist eher
+pessimistisch (oft 0.12-0.15); aus 30 Tagen echter Daten messen.
 
 ## 3. Problem B - Die vLLM-Kapazität (Slots pro GPU)
 
@@ -54,13 +59,13 @@ läuft ohne Warte. **10 zugleich** ist der häufigste
 simultane Anruufe bringt, aber die GPU muss alle
 *simultan* verarbeiten.
 
-## 4. Beispiel: 200/Tag, 10 zugleich, 2 min, A100-80
+## 4. Beispiel: 200/Tag, 10 zugleich, 2 min (günstigste passende GPU)
 
 ```bash
 python beispiele/skalierungsrechner.py rechner 200 10
-# Queue: 1 Agent (Wq 15.8 s, rho=0.208)
-# Infe:  1x A100-80, --max-num-seqs 250, ~2600 CHF/Mo
-# => "bestimmt die INFERENZ die Kapazität" (10 > 1)
+# Anruf-Queue:  3 Agenten, Wq 13.5 s, rho=0.556
+# Inferenz:     1x L4-24, vLLM --max-num-seqs 120, ~700 CHF/Mo
+# => "bestimmt die INFERENZ die Kapazität" (10 > 3)
 ```
 
 ## 5. Skalierungstabelle (Voice, 5 -> 1000)
@@ -107,6 +112,6 @@ eigentliche **Wert** (die Personen, die es betreuen).
 |---|---|---|
 | 1 | Wieviele Anrufe in der GIPFELSTUNDE? | Bestimmt Erlang-C (Problem A). |
 | 2 | Wieviele *gleichzeitig* (simultan)? | Bestimmt vLLM-Slots (Problem B). |
-| 3 | Welche GPU (A100-80 / H100)? | A100-80 = KMU-Standard; H100 = 3x teurer. |
+| 3 | Welche GPU (L4, L40S, A100, H100)? | L4/L40S = KMU-Standard bis ~10-20 Gespräche mit 8 B; A100/H100 erst ab ~30 Gesprächen oder 32 B+ (`voiceagent.sizing`). |
 | 4 | Sind Token/Tag < 10M (API genug)? | Ja: keine GPU; Nein: vLLM. |
 | 5 | Ist 24/7 (> 500) nötig? | Nein: 8h-Betrieb, 1 Kopf; Ja: Cluster, 2+. |

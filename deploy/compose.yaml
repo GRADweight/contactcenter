@@ -1,0 +1,94 @@
+# KMU-Einzelserver: 1 GPU (z. B. L4 24 GB oder L40S 48 GB), alles lokal.
+# Genesys Cloud (Audio Connector) -> wss://voice.example.ch -> caddy -> voiceagent
+#
+#   cp deploy/.env.example deploy/.env   # Werte setzen
+#   docker compose -f deploy/compose.yaml --env-file deploy/.env up -d
+#   docker compose -f deploy/compose.yaml --env-file deploy/.env --profile monitoring up -d
+#
+# Images vor Produktion auf Digest pinnen (image: name@sha256:...).
+name: contactcenter
+
+services:
+  caddy:                       # TLS (Let's Encrypt) + WebSocket-Proxy
+    image: caddy:2.8
+    ports: ["443:443", "80:80"]
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN setzen, z. B. voice.example.ch}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on: [voiceagent]
+    restart: unless-stopped
+
+  voiceagent:                  # AudioHook-Server, Dialog, Gateway, Tools, Audit
+    build: { context: .., dockerfile: deploy/Dockerfile }
+    environment:
+      AUDIOHOOK_API_KEY: ${AUDIOHOOK_API_KEY:?API-Key aus Genesys-Integration}
+      AUDIT_HMAC_KEY: ${AUDIT_HMAC_KEY:?zufälliger Schlüssel für die Audit-Kette}
+      AUDIT_DIR: /audit
+      LLM_URL: http://vllm:8000/v1
+      LLM_MODELL: ${LLM_MODELL:-Qwen/Qwen3-8B-AWQ}
+      LLM_NAME: lokal-vllm
+      LLM_REGION: lokal
+      LLM_EXTRA_JSON: '{"chat_template_kwargs": {"enable_thinking": false}}'
+      ASR_URL: http://speaches:8000/v1
+      ASR_MODELL: ${ASR_MODELL:-Systran/faster-whisper-large-v3}
+      TTS_URL: http://speaches:8000/v1
+      TTS_MODELL: ${TTS_MODELL:?deutsche TTS-Stimme setzen, s. .env.example}
+      TTS_STIMME: ${TTS_STIMME:-}
+    volumes:
+      - audit:/audit           # auf WORM/Snapshot-fähigen Speicher legen
+    expose: ["8080", "9100"]
+    depends_on:
+      vllm: { condition: service_healthy }
+      speaches: { condition: service_started }
+    restart: unless-stopped
+
+  vllm:                        # LLM-Inferenz, OpenAI-kompatibel
+    image: ${VLLM_IMAGE:-vllm/vllm-openai:v0.11.0}
+    command:
+      - --model=${LLM_MODELL:-Qwen/Qwen3-8B-AWQ}
+      - --enable-prefix-caching          # Gesprächskontext bleibt im Cache: TTFT ~100 statt ~2000 ms
+      - --max-model-len=8192
+      - --max-num-seqs=32
+      - --gpu-memory-utilization=0.60   # Rest der Karte für ASR/TTS
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-}
+    volumes: [hf_cache:/root/.cache/huggingface]
+    ipc: host
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 40
+    deploy:
+      resources:
+        reservations:
+          devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
+    restart: unless-stopped
+
+  speaches:                    # ASR (faster-whisper) + TTS (Piper), OpenAI-kompatibel
+    image: ${SPEACHES_IMAGE:-ghcr.io/speaches-ai/speaches:latest-cuda}
+    volumes: [hf_cache:/home/ubuntu/.cache/huggingface]
+    deploy:
+      resources:
+        reservations:
+          devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.0.1
+    profiles: [monitoring]
+    volumes: [./prometheus.yml:/etc/prometheus/prometheus.yml:ro]
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    profiles: [monitoring]
+    ports: ["127.0.0.1:3000:3000"]   # nur lokal / über VPN
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  audit:
+  hf_cache:

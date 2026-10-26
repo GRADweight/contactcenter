@@ -1,12 +1,13 @@
 name: ci
 
 # CI-Gate für contactcenter: hartes Gate (grün/rot) über alle lauffähigen
-# Teile. Zwei Schichten:
-#   1) Syntax/Import  - alle .py compilen (schnell, ~30 s)
-#   2) Verhalten       - die drei Samples (selftest) deterministisch, ohne Netz
+# Teile. Drei Schichten:
+#   1) Syntax/Import  - alle .py compilen (schnell)
+#   2) Verhalten       - Samples (selftest), voiceagent-Tests, simulierter Anruf
+#   3) Qualität        - Evals gegen Golden-Set mit harten Schwellen
 #
-# Braucht NUR Python-Standardbibliothek. Kein Ollama, keine GPU, keine
-# API-Keys, kein Netzwerk - alles deterministisch, offline.
+# Keine GPU, keine API-Keys, kein externes Netz - alles deterministisch.
+# Einzige Installation: websockets (für den WebSocket-Servertest).
 
 on:
   push:
@@ -34,6 +35,7 @@ jobs:
             beispiele/skalierungsrechner.py \
             beispiele/handoff_router.py \
             beispiele/qualitaetstest.py
+          python -m compileall -q voiceagent evals tests
           echo "  Alle Python-Dateien compilen"
 
       - name: 2) Selftests (kein Netz, kein API-Key)
@@ -53,10 +55,23 @@ jobs:
       - name: '4) Skalierungsrechner Demo-Szenario 200 Tag 10 zugleich'
         run: |
           python beispiele/skalierungsrechner.py rechner 200 10
-          echo '  A100-80 muss im Ergebnis vorkommen:'
-          python beispiele/skalierungsrechner.py rechner 200 10 | grep -q "A100-80"
+          echo '  Günstigste passende Karte (L4), keine überdimensionierte A100:'
+          python beispiele/skalierungsrechner.py rechner 200 10 | grep -q "1x L4-24"
 
-      - name: '5) Doku-Linkcheck (keine toten Links in den Dossiers)'
+      - name: '5) voiceagent - Unit-, Integrations- und End-to-End-Tests'
+        run: |
+          pip install "websockets>=13"
+          python -m unittest discover -s tests -v
+
+      - name: '6) Evals - Golden-Set mit Gate (Sicherheit 100 %, Übergabe >= 95 %, Latenz)'
+        run: python evals/run_evals.py --json eval-bericht.json
+
+      - name: '7) Simulierter Anruf und GPU-Dimensionierung'
+        run: |
+          python -m voiceagent.sim
+          python -m voiceagent.sizing qwen3-8b 10
+
+      - name: '8) Doku-Linkcheck (keine toten Links in den Dossiers)'
         run: |
           python - <<'PY'
           import os, re, glob

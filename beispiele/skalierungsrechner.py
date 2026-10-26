@@ -129,12 +129,35 @@ GPUS = {
                             slots_70b=30, kost_chf_24_7_monat=3500,
                             notiz="aktueller High-Throughput-Standard"),
     "L4-24": GPUKategorie("L4 24 GB", slots_7b=120, slots_30b=12,
-                            slots_70b=0, kost_chf_24_7_monat=900,
-                            notiz="klein, günstig, für 7-14B mit Quantisierung gut"),
-    "A10-24": GPUKategorie("A10 24 GB", slots_7b=90, slots_30b=10,
                             slots_70b=0, kost_chf_24_7_monat=700,
-                            notiz="kleinste brauchbare NVIDIA-GPU für 7B"),
+                            notiz="klein, sparsam, FP8; für 7-14B mit Quantisierung gut"),
+    "A10-24": GPUKategorie("A10 24 GB", slots_7b=90, slots_30b=10,
+                            slots_70b=0, kost_chf_24_7_monat=750,
+                            notiz="ältere Ampere-Karte ohne FP8, L4 bevorzugen"),
+    "L40S-48": GPUKategorie("L40S 48 GB", slots_7b=200, slots_30b=40,
+                            slots_70b=6, kost_chf_24_7_monat=1400,
+                            notiz="Allrounder, ASR/TTS passen daneben"),
 }
+
+# Ein Voicebot rechnet nur einen Teil der Gesprächszeit (zuhören, sprechen,
+# warten). Gleichzeitige LLM-Anfragen = gleichzeitige Anrufe x Duty Cycle.
+LLM_DUTY_CYCLE = 0.2
+SLOT_RESERVE = 2.0      # Kopfraum: Slots >= 2x Bedarf
+
+
+def guenstigste_gpu(parallele_streams: int, modell_klasse: str = "7b") -> str:
+    """Günstigste Karte, deren Slots den Bedarf mit Reserve decken.
+
+    Fix (2. Überarbeitung): Früher war A100-80 fest eingestellt. Für ein
+    7-B-Modell und 10 Anrufe ist das ~4x zu teuer. Die genaue,
+    KV-Cache-basierte Rechnung steht in ``voiceagent/sizing.py``.
+    """
+    kandidaten = []
+    for name, g in GPUS.items():
+        slots = {"7b": g.slots_7b, "30b": g.slots_30b, "70b": g.slots_70b}[modell_klasse]
+        if slots >= parallele_streams * SLOT_RESERVE:
+            kandidaten.append((g.kost_chf_24_7_monat, name))
+    return min(kandidaten)[1] if kandidaten else "H100-80"
 
 
 def inferenz_sizing(
@@ -162,21 +185,27 @@ def inferenz_sizing(
 # --------------------------------------------------------------------------
 # Text: ~10'000 Token ~= ~17 KB (0.0017 MB). 1 Token ~ 0.17 Byte nach
 # dieser Groessenschätzung (UTF-8 Deutsch, ~6 char/Token).
+AUDIO_FORMATE = {
+    # Bytes pro Sekunde
+    "g711-stereo": 16000,       # Telefonie: 8 kHz, 8 bit mu-law, Kunde + Agent getrennt
+    "pcm16k-mono": 32000,       # Breitband-PCM (nicht Telefonie)
+    "opus-stereo-32k": 4000,    # Archivformat, ~1/4 von G.711, sprachlich verlustarm
+}
+
+
 def datenaufwand(
     anrufe_pro_tag: int,
     token_pro_gespraech: int = 4000,
     dauer_s_pro_gespraech: float = 120.0,
-    sample_rate: int = 16000,
-    bits_pro_sample: int = 16,
-    kanale: int = 1,
+    format: str = "g711-stereo",
 ) -> dict:
     """Schätzt den täglichen Speicherbedarf für Text UND Ton.
-    (Bug-Fix: der erste Pass zählte nur Text, nicht den Ton.
-    Bei 200 Anrufen x 2 Min x 16 kHz/16 bit = ~23 GB/Tag Roh-Ton,
-    nicht ~1.3 MB.)"""
+    (Bug-Fix 1. Pass: zuerst wurde nur Text gezählt.
+    Bug-Fix 2. Pass: Telefonie ist G.711 mit 8 kHz, nicht 16 kHz/16 bit;
+    Standard ist jetzt Stereo-G.711 = 16 KB/s, Archiv als Opus ~4 KB/s.)"""
     tokens = anrufe_pro_tag * token_pro_gespraech
     text_mb = tokens * 0.0017 / 1024.0  # 10'000 Token ~ 17 KB
-    bytes_pro_s = sample_rate * bits_pro_sample * kanale / 8.0
+    bytes_pro_s = AUDIO_FORMATE[format]
     audio_mb_per_tag = bytes_pro_s * dauer_s_pro_gespraech * anrufe_pro_tag / (1024.0 ** 2)
     audio_gb_24_7 = audio_mb_per_tag / 1024.0 * 30  # 24/7 im Monat
     return {
@@ -185,7 +214,7 @@ def datenaufwand(
         "audio_mb_tag": round(audio_mb_per_tag, 1),
         "audio_gb_monat_24_7": round(audio_gb_24_7, 1),
         "gesamt_mb_tag": round(text_mb + audio_mb_per_tag, 1),
-        "notiz": "Ton dominiert: 16 kHz/16 bit mono, 120 s/Anruf",
+        "notiz": f"Ton dominiert: {format}, {dauer_s_pro_gespraech:.0f} s/Anruf",
     }
 
 
@@ -197,26 +226,36 @@ def datenaufwand(
 # hier additiv geschätzt. vLLM-Slots bestimmen die LLM-TTFT nur
 # indirekt (bei 10 parallel auf 1x A100: Continuous Batching hält TTFT).
 def laten_z_pruefen(
-    asr_ms: int = 300,
-    llm_ttft_ms: int = 200,
-    tts_ms: int = 300,
+    endpointing_ms: int = 300,
+    asr_ms: int = 150,
+    llm_ttft_ms: int = 250,
+    erster_satz_ms: int = 200,
+    tts_ms: int = 150,
     rtt_ms: int = 25,
-    buffer_ms: int = 100,
-    ziel_ms: int = 1500,
+    buffer_ms: int = 0,
+    ziel_ms: int = 1000,
     prefix_caching: bool = True,
 ) -> dict:
-    """Schätzt den 6-Etappen-End-to-End-Spalten und prüft das Ziel.
-    Bei prefix-caching sinkt LLM-TTFT auf ~80 ms."""
+    """Zeit bis zum ersten Ton: Kundschaft verstummt -> Bot-Stimme beginnt.
+
+    Fix (2. Überarbeitung): Der grösste Posten fehlte, das Endpointing
+    (wie lange wartet der Bot, bis er "fertig" annimmt; klassisch 700-800
+    ms feste Stille, semantisch ~300 ms). Ausserdem zählt bis zum ersten
+    Ton nur der erste Satz (Satz-Streaming), nicht die ganze Antwort.
+    Ziel 1000 ms statt 1500 ms: ab ~1 s wirkt ein Bot spürbar träge.
+    Gemessen statt geschätzt: ``python -m voiceagent.sim``."""
     llm = 80 if prefix_caching else llm_ttft_ms
-    gesamt = asr_ms + llm + tts_ms + rtt_ms + buffer_ms
+    gesamt = endpointing_ms + asr_ms + llm + erster_satz_ms + tts_ms + rtt_ms + buffer_ms
     return {
         "geschatzte_zeit_ms": gesamt,
         "ziel_ms": ziel_ms,
         "erfullt": gesamt <= ziel_ms,
         "komponenten": {
-            "asr_strengam": asr_ms,
+            "endpointing": endpointing_ms,
+            "asr_final": asr_ms,
             "llm_ttft_mit_pref": llm,
-            "tts": tts_ms,
+            "erster_satz": erster_satz_ms,
+            "tts_erstes_audio": tts_ms,
             "rtt": rtt_ms,
             "buffer": buffer_ms,
         },
@@ -239,14 +278,17 @@ def szenario(
     token_pro_gespraech: int = 4000,
     max_wartezeit_s: float = 20.0,
     modell_klasse: str = "7b",
-    gpu: str = "A100-80",
+    gpu: str = "auto",
 ) -> dict:
     q = minimal_agenten(
         anrufe_pro_tag, geschaeftsstunden,
         mittlere_handhabung_s, max_wartezeit_s=max_wartezeit_s,
     )
     parallel_ziel = max(q["agenten_min"], parallele_streams_ziel)
+    if gpu == "auto":
+        gpu = guenstigste_gpu(parallel_ziel, modell_klasse)
     inf = inferenz_sizing(parallel_ziel, modell_klasse, gpu)
+    inf["llm_parallel_bei_duty_cycle"] = math.ceil(parallel_ziel * LLM_DUTY_CYCLE)
     data = datenaufwand(
         anrufe_pro_tag, token_pro_gespraech,
         dauer_s_pro_gespraech=mittlere_handhabung_s,
@@ -331,14 +373,16 @@ def selftest() -> int:
     # (1) busy-hour: 200/Tag * 0.25 = 50 Anrufe in der Gipfelstunde,
     #     nicht 25*0.25=6.25. A = 50/60 * 2 = 1.67, > 1 Agent.
     assert s["angebotslast_erlangs"] > 1.0, f"A muss > 1 (peak-hour-Fix): {s}"
-    # (2) Ton-Storage: 200 Anrufe x 120 s x 16 kHz/16 bit ~ 768 MB/Tag
+    # (2) Ton-Storage: 200 Anrufe x 120 s x G.711 Stereo (16 KB/s) ~ 366 MB/Tag
     da = datenaufwand(200)
-    assert da["audio_mb_tag"] > 700, f"Ton muss > 700 MB/Tag sein: {da}"
+    assert 300 < da["audio_mb_tag"] < 400, f"G.711 Stereo ~366 MB/Tag: {da}"
+    assert datenaufwand(200, format="opus-stereo-32k")["audio_mb_tag"] < 100
     print(f"  Daten/Tag: {da['audio_mb_tag']} MB Ton + {da['text_mb_tag']} MB Text "
           f"(~{da['audio_gb_monat_24_7']} GB/Monat 24/7)")
-    # (3) Voice-Reply-Latenz < 1500 ms Ziel (mit Prefix-Caching)
+    # (3) Zeit bis erster Ton < 1000 ms (mit Endpointing + Prefix-Caching)
     lat = laten_z_pruefen()
-    assert lat["erfullt"] and lat["geschatzte_zeit_ms"] < 1500, lat
+    assert lat["erfullt"] and lat["geschatzte_zeit_ms"] < 1000, lat
+    assert lat["komponenten"]["endpointing"] > 0, "Endpointing muss mitgezählt sein"
     lat_no = laten_z_pruefen(prefix_caching=False)
     assert lat_no["geschatzte_zeit_ms"] > lat["geschatzte_zeit_ms"], lat_no
     print(f"  Latenz: {lat['geschatzte_zeit_ms']} ms mit/ "
@@ -346,9 +390,12 @@ def selftest() -> int:
 
     full = szenario(200, 10)
     assert full["inferenz"]["gpus_noetig"] == 1, full
+    # (4) keine A100 für 10 Anrufe mit 7B: günstigste passende Karte
+    assert full["inferenz"]["gpu"] == "L4-24", full["inferenz"]
+    assert full["inferenz"]["llm_parallel_bei_duty_cycle"] == 2, full["inferenz"]
     assert full["daten"]["tokens_tag"] == 800_000, full
     # Ton dominiert den Speicher (Bug-Fix: früher nur Text gezählt)
-    assert full["daten"]["audio_mb_tag"] > 700, full
+    assert full["daten"]["audio_mb_tag"] > 300, full
     # Voice-Reply-Latenz: ~880 ms < 1500 ms Ziel (mit Prefix-Caching)
     assert full["latenz"]["erfullt"] is True, full
     print(f"  Szenario: {full['empfehlung']}")
@@ -379,8 +426,10 @@ def rechner(args) -> int:
     lat = res["latenz"]
     print(f"Latenz:       ~{lat['geschatzte_zeit_ms']} ms "
           f"({'unter' if lat['erfullt'] else 'UEBER'} Ziel {lat['ziel_ms']} ms) "
-          f"Voice-Reply")
+          f"Zeit bis erster Ton")
     print(f"Empfehlung:   {res['empfehlung']}")
+    print("Genauer (KV-Cache, Bandbreite, TTFT): python -m voiceagent.sizing qwen3-8b "
+          f"{parallel}")
     return 0
 
 

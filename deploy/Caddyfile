@@ -1,0 +1,7 @@
+{$DOMAIN} {
+	# Genesys verbindet nur über wss:// (TLS). Caddy holt das Zertifikat selbst.
+	reverse_proxy voiceagent:8080
+	# Metriken und Health nicht öffentlich
+	@intern path /metrics /healthz
+	respond @intern 404
+}
