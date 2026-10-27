@@ -49,15 +49,21 @@ gw-contactcenter = "gw_contactcenter.cli:main"
 packages = ["gw_contactcenter"]
 
 [tool.hatch.build.targets.sdist]
+# Alles, was die Tests brauchen: Doku-Konsistenz liest README und docs/,
+# die Deploy-Tests lesen deploy/.
 include = [
     "gw_contactcenter",
     "tests",
     "evals",
     "beispiele",
     "docs",
+    "deploy",
     "README.md",
     "LICENSE",
     "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "ROADMAP.md",
+    "SECURITY.md",
 ]
 
 [tool.ruff]

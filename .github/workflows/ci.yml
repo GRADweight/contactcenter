@@ -112,6 +112,12 @@ jobs:
           /tmp/frisch/bin/python -m gw_contactcenter sim | grep -q "SIMULATION"
           if /tmp/frisch/bin/gw-contactcenter server 2>/tmp/fehler.txt; then exit 1; fi
           grep -q "verweigert" /tmp/fehler.txt
+      - name: Tests aus dem sdist (enthält alles, was die Tests brauchen)
+        run: |
+          mkdir /tmp/sdist && tar -xzf dist/*.tar.gz -C /tmp/sdist --strip-components=1
+          uv venv -p 3.13 /tmp/sdist-venv
+          uv pip install -p /tmp/sdist-venv "/tmp/sdist[dev]"
+          cd /tmp/sdist && /tmp/sdist-venv/bin/python -m pytest -q -p no:cacheprovider
 
   container:
     runs-on: ubuntu-24.04
