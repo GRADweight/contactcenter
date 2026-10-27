@@ -253,6 +253,15 @@ def test_betriebskonstanten() -> None:
     _enthaelt("docs/16-leitplanken.md", f"höchstens {MAX_ALTER_S} s alt")
 
 
+def test_uebergabe_zusammenfassung_begrenzt() -> None:
+    from .conftest import baue_dialog
+
+    d, _, _ = baue_dialog()
+    d.verlauf = [{"role": "user", "content": "x" * 2000}]
+    laenge = len(d.uebergabe("Test")["zusammenfassung"])
+    _enthaelt("docs/07-weiterleitung-handoff.md", f"höchstens {laenge} Zeichen")
+
+
 def test_vllm_parameter_wie_im_compose() -> None:
     compose = _text("deploy/compose.yaml")
     for flag, wert in (
