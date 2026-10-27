@@ -37,7 +37,7 @@ import time
 import urllib.parse
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from .adapters.openai_compat import _header, _json_lesen, _multipart, http_post
@@ -298,7 +298,7 @@ def messen(
         t.join()
 
     return Messbericht(
-        zeitpunkt_utc=datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        zeitpunkt_utc=datetime.now(UTC).replace(microsecond=0).isoformat(),
         methode={
             "wiederholungen": wiederholungen,
             "aufwaermen": aufwaermen,

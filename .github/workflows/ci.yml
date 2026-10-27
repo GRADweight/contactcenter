@@ -38,7 +38,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.10", "3.12", "3.13"]
+        python: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -124,7 +124,7 @@ jobs:
         env:
           DOMAIN: voice.example.ch
           AUDIOHOOK_API_KEY: platzhalter
-          AUDIOHOOK_CLIENT_SECRET: cGxhdHpoYWx0ZXI=
+          AUDIOHOOK_CLIENT_SECRET: platzhalter
           AUDIT_HMAC_KEY: platzhalter-platzhalter-platzhalter-32
           LLM_MODELL: Qwen/Qwen3-8B-AWQ
           ASR_MODELL: Systran/faster-whisper-large-v3

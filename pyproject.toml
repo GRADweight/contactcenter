@@ -7,7 +7,7 @@ name = "gradweight-contactcenter"
 version = "2.1.0"
 description = "Sprachagent und Kapazitätsrechner für den Schweizer KMU-Kundendienst: Genesys Audio Connector, Erlang-C, GPU-Dimensionierung, Leitplanken"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "GRADweight GmbH", email = "mail@gradweight.ch" }]
@@ -19,7 +19,6 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -63,7 +62,7 @@ include = [
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py311"
 extend-exclude = [".venv", "build", "dist"]
 
 [tool.ruff.lint]
@@ -82,7 +81,7 @@ ignore = [
 "gw_contactcenter/latenzmessung.py" = ["T20"]
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 strict = true
 warn_unreachable = true
 files = ["gw_contactcenter"]
