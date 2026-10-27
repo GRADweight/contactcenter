@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import warnings
 from array import array
@@ -22,6 +23,16 @@ def test_ulaw_bekannte_codepunkte() -> None:
     assert audio.pcm16_to_ulaw(b"\x00\x00") == b"\xff"
 
 
+def test_ulaw_tabellen_wie_audioop_auch_ohne_audioop() -> None:
+    """SHA-256 der vollständigen Tabellen, einmal mit audioop (Python 3.12)
+    berechnet. Damit ist die Gleichheit auch ab 3.13 geprüft."""
+    werte = array("h", range(-32768, 32768)).tobytes()
+    kodiert = hashlib.sha256(audio.pcm16_to_ulaw(werte)).hexdigest()
+    dekodiert = hashlib.sha256(audio.ulaw_to_pcm16(bytes(range(256)))).hexdigest()
+    assert kodiert == "81d633c9e6972a18c74a58720b96cb8ca0bdd096d4060b646dd708c3b846019a"
+    assert dekodiert == "3dab54339e520bb2c924826e3b72a917a2b612e9fd12fc867500f1d983a75827"
+
+
 @pytest.mark.skipif(importlib.util.find_spec("audioop") is None, reason="audioop ab 3.13 entfernt")
 def test_ulaw_gleich_wie_audioop() -> None:
     with warnings.catch_warnings():
@@ -30,7 +41,7 @@ def test_ulaw_gleich_wie_audioop() -> None:
 
     alle = bytes(range(256))
     assert audio.ulaw_to_pcm16(alle) == audioop.ulaw2lin(alle, 2)
-    werte = array("h", range(-32768, 32768, 7)).tobytes()
+    werte = array("h", range(-32768, 32768)).tobytes()  # jedes 16-Bit-Sample
     assert audio.pcm16_to_ulaw(werte) == audioop.lin2ulaw(werte, 2)
 
 

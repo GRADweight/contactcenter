@@ -25,18 +25,30 @@ ASR_RATE = 16000  # Hz, Whisper und ähnliche
 FRAME_MS = 20  # übliche Paketgrösse in RTP und AudioHook
 
 _BIAS = 0x84
-_CLIP = 32635
+# Kodierer auf 14 Bit wie die Sun-Referenzimplementierung g711.c, auf der auch
+# audioop.lin2ulaw beruht: Schwelle der Segmente, Begrenzung, halbierter Bias.
+_SEG_ENDE_14 = (0x3F, 0x7F, 0xFF, 0x1FF, 0x3FF, 0x7FF, 0xFFF, 0x1FFF)
+_CLIP_14 = 8159
+_BIAS_14 = _BIAS >> 2
 
 
 def _lin2ulaw(sample: int) -> int:
-    """Ein lineares 16-Bit-Sample -> ein mu-law-Byte (G.711)."""
-    sign = 0x80 if sample < 0 else 0x00
-    if sample < 0:
-        sample = -sample
-    sample = min(sample, _CLIP) + _BIAS
-    exponent = min(7, max(0, (sample >> 7).bit_length() - 1))
-    mantissa = (sample >> (exponent + 3)) & 0x0F
-    return (~(sign | (exponent << 4) | mantissa)) & 0xFF
+    """Ein lineares 16-Bit-Sample -> ein mu-law-Byte (G.711).
+
+    Bitgleich mit ``audioop.lin2ulaw``: Das Sample wird zuerst arithmetisch auf
+    14 Bit geschoben (negative Werte runden dabei Richtung minus unendlich),
+    dann nach Vorzeichen und Betrag kodiert.
+    """
+    wert = sample >> 2
+    if wert < 0:
+        wert, maske = -wert, 0x7F
+    else:
+        maske = 0xFF
+    wert = min(wert, _CLIP_14) + _BIAS_14
+    segment = next((i for i, ende in enumerate(_SEG_ENDE_14) if wert <= ende), 8)
+    if segment >= 8:
+        return 0x7F ^ maske
+    return ((segment << 4) | ((wert >> (segment + 1)) & 0x0F)) ^ maske
 
 
 def _ulaw2lin(byte: int) -> int:
