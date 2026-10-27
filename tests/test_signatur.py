@@ -24,7 +24,8 @@ from gw_contactcenter.signatur import (
     signieren,
 )
 
-API_KEY = "SGVsbG8sIEkgYW0gdGhlIEFQSSBrZXkh"
+# Öffentliche Testvektoren aus der Genesys-Dokumentation, keine Geheimnisse.
+API_KEY = "SGVsbG8sIEkgYW0gdGhlIEFQSSBrZXkh"  # gitleaks:allow
 SECRET = base64.b64decode("TXlTdXBlclNlY3JldEtleVRlbGxOby0xITJAMyM0JDU=")
 PFAD = "/api/v1/voicebiometrics/ws"
 GENESYS = {
