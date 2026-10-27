@@ -50,14 +50,14 @@ def test_alle_typen_werden_maskiert_und_wiederhergestellt() -> None:
     t = PIITresor()
     text = (
         f"IBAN {IBAN_GUELTIG}, Karte {KARTE_GUELTIG}, AHV {AHV_GUELTIG}, "
-        "Mail anna.muster@beispiel.ch, Tel 079 123 45 67, Konto 1234567, Bestellung 447100"
+        "Mail anna.muster@example.com, Tel 079 123 45 67, Konto 1234567, Bestellung 447100"
     )
     p, typen = t.pseudonymisieren(text)
     for roh in (
         IBAN_GUELTIG,
         KARTE_GUELTIG,
         AHV_GUELTIG,
-        "anna.muster@beispiel.ch",
+        "anna.muster@example.com",
         "079 123 45 67",
     ):
         assert roh not in p

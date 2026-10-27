@@ -1,117 +1,145 @@
-# 05 - Skalierung: 200 Anrufe/Tag ODER 10 gleichzeitig
+# 05 Skalierung: Personal und Kanäle mit Erlang-B, -C und -A
 
-> **Stand: Oktober 2026.** GPU-Preise und vLLM-Slots wandern.
-> Vor jedem Angebot neu rechnen - s. `OFFENE_PUNKTE.md` #1.
+## Zwei verschiedene Fragen
 
-> **Korrektur v2 (26.10.2026):** Slots pro GPU sind Daumenwerte. Genauer
-> rechnet `python -m voiceagent.sizing` aus KV-Cache, Bandbreite und
-> Duty Cycle (10 Gespräche = ~2 parallele LLM-Anfragen). Ergebnis für
-> 10 Gespräche mit 8 B: 1x L4 statt 1x A100. Siehe [`docs/12`](12-zielarchitektur.md).
+«200 Anrufe pro Tag» und «10 Anrufe gleichzeitig» sind zwei Fragen:
 
-## 1. Die zentraelle Falle: ein Wort, zwei Probleme
+- **Wie viele Menschen** müssen in der Spitzenstunde verfügbar sein, damit die Wartezeit im
+  Ziel bleibt? Das ist eine Warteschlange: **Erlang-C**.
+- **Wie viele Kanäle** braucht ein Sprachagent, der jeden Anruf sofort annimmt und nur bei
+  vollen Kanälen an die normale Warteschlange überlaufen lässt? Das ist ein Verlustsystem:
+  **Erlang-B**.
 
-«200 Anrufe/Tag ODER 10 zugleich» klingt gleich, ist aber **zwei
-Probleme** mit **zwei Engpässen**:
+Die GPU-Frage folgt aus der Kanalzahl ([11](11-performance-architektur.md)).
 
-- **200 Anrufe/Tag** = **Durchsatz**-Problem -> engpäss an der
-  **ACD-Warteschlange** (Erlang-C).
-- **10 Anrufe zugleich** = **Parallelismus**-Problem -> engpäss
-  an der **vLLM-Inferenz** (Slots pro GPU).
+## Modell und Formeln
 
-Beide müssen gleichzeitig erfüllt sein. 200/Tag schafft man
-*bei wenig Simultan*; 10 zugleich nur mit genug GPU-Slots.
+Annahmen von Erlang-C (M/M/n): Anrufe treffen als Poisson-Prozess mit Rate λ ein, die
+Bearbeitungszeit ist exponentialverteilt mit Mittelwert h (AHT), n gleiche Agenten bedienen
+in Ankunftsreihenfolge, niemand legt auf.
 
-## 2. Problem A - Die Warteschlange (Erlang-C)
+| Grösse | Formel |
+|---|---|
+| Angebotslast | A = λ · h (Erlang) |
+| Erlang-B (Rekursion) | B(0) = 1, B(k) = A · B(k−1) / (k + A · B(k−1)) |
+| Wartewahrscheinlichkeit | C(n, A) = n · B(n, A) / (n − A · (1 − B(n, A))), nur für n > A |
+| mittlere Wartezeit (ASA, über alle Anrufe) | W_q = C(n, A) · h / (n − A) |
+| Servicelevel | SL(t) = 1 − C(n, A) · e^(−(n − A) · t / h) |
+| Auslastung | ρ = A / n |
 
-```
-  lambda = Ankunftsrate (Anrufe/Minute)
-  h      = Handhabungszeit/Anruf (Minuten)
-  A      = lambda * h      = Angebotslast (Erlangs)
-  C(n,A) = P(anruf wartet)
-  Wq     = C(n,A)/(n-A)    = mittlere Wartezeit
-```
+Die Rekursion vermeidet Fakultäten und bleibt auch bei Tausenden Kanälen stabil. Für n ≤ A
+wächst die Warteschlange ohne Grenze; der Code lehnt das ab (`InstabilesSystemFehler`),
+statt eine Zahl zu liefern. Quelle der Formeln: M. Zukerman, «Introduction to Queueing
+Theory and Stochastic Teletraffic Models», arXiv:1307.2968.
 
-**Der GIPFELSTUNDE-Trick:** 200/Tag ist *nicht* die Last.
-Konservative Annahme: **25 %** des Tagesvolumens fallen in die
-geschäftigste Stunde, also 200 x 0.25 = **50 Anrufe/Stunde**.
-Bei 2 min pro Anruf: A = 50/60 x 2 = **1.67 Erlang** -> **3 Agenten**
-für < 20 s mittlere Wartezeit (Wq 13.5 s). Der Faktor 0.25 ist eher
-pessimistisch (oft 0.12-0.15); aus 30 Tagen echter Daten messen.
+Eine frühere Fassung dieses Repos rechnete W_q = C / (n − A) ohne den Faktor h. Bei
+h = 2 Minuten halbierte das die Wartezeit und führte zu 3 statt 4 Agenten im Beispiel der
+README.
 
-## 3. Problem B - Die vLLM-Kapazität (Slots pro GPU)
+## Die Spitzenstunde ist eine Annahme
 
-10 *gleichzeitig* = 10 LLM-Streams parallel. Jde GPU kann X
-parallel (die **Slot-Grenze**). `gpus_noetig = ceil(Streams /
-slots_pro_GPU)`. Slots pro GPU sind **Grössenordnungen**
-(10/2026, aus `beispiele/skalierungsrechner.py`):
+Der Rechner verteilt das Tagesvolumen nicht gleichmässig, sondern setzt einen Anteil in die
+geschäftigste Stunde (Parameter `--spitzenanteil`, Standard 25 %). Dieser Wert ist eine
+**Annahme**. Er hängt von Branche, Öffnungszeiten und Wochentag ab und muss aus den Daten der
+eigenen Telefonanlage bestimmt werden, am besten als höchstes (oder z. B. 90-%-Quantil des)
+Stundenvolumen über mehrere typische Wochen.
 
-| GPU | 7-14B | 30B | 70B (AWQ) |
+Wie stark das Ergebnis daran hängt (200 Anrufe pro Tag, AHT 120 s, Ziel ASA ≤ 20 s):
+
+| Anteil Spitzenstunde | Angebotslast | Agenten | ASA bei dieser Zahl | Sprachagent-Kanäle (≤ 1 % Überlauf) |
+|---|---|---|---|---|
+| 15 % | 1.000 Erlang | 3 | 5.5 s | 5 |
+| 25 % | 1.667 Erlang | 4 | 5.3 s | 6 |
+| 35 % | 2.333 Erlang | 4 | 19.2 s | 7 |
+
+## Validierung
+
+**Publizierte Referenzwerte.** Das Beispiel von Call Centre Helper («Erlang C Formula – Made
+Simple With an Easy Worked Example», 100 Anrufe in 30 Minuten, AHT 180 s, A = 10 Erlang) ist
+im README des R-Pakets ErlangC auf CRAN mit sieben Stellen ausgerechnet. Der Code trifft alle
+Werte (`tests/test_warteschlange.py`):
+
+| Agenten | P(warten) | Servicelevel 20 s | ASA |
 |---|---|---|---|
-| A10-24GB | 90 | 10 | - |
-| L4-24GB | 120 | 12 | - |
-| A100-40GB | 180 | 25 | - |
-| A100-80GB | 250 | 55 | 18 |
-| H100-80GB | 400 | 100 | 30 |
+| 11 | 0.6821182 | 0.3896138 | 122.78 s |
+| 12 | 0.4493882 | 0.640158 | 40.44 s |
+| 13 | 0.2852705 | 0.7955948 | 17.12 s |
+| 14 | 0.1741319 | 0.88835 | 7.84 s |
 
-**Fazit B:** 10 *gleichzeitig* 7-14B auf einer A100 (250 Slots)
-läuft ohne Warte. **10 zugleich** ist der häufigste
-*bindender Fall*, weil die GIPFELSTUNDE selten > 10-15
-simultane Anruufe bringt, aber die GPU muss alle
-*simultan* verarbeiten.
+Dazu Erlang-B mit 1000 Leitungen bei 1500 Erlang: erlang.com nennt 0.335, der Code liefert
+denselben Wert auf drei Stellen. Mit Fakultäten liefe diese Rechnung über.
 
-## 4. Beispiel: 200/Tag, 10 zugleich, 2 min (günstigste passende GPU)
+**Unabhängige Simulation.** `gw_contactcenter/warteschlange_sim.py` simuliert Anrufe einzeln
+(Poisson-Ankünfte, FCFS, n Agenten, optional Geduld und nicht-exponentielle Gespräche) und
+enthält keine Erlang-Formel. Die Tests verlangen Übereinstimmung innerhalb von 4.5
+Standardfehlern; die Tabelle zeigt die Szenarien mit Seed 1:
 
-```bash
-python beispiele/skalierungsrechner.py rechner 200 10
-# Anruf-Queue:  3 Agenten, Wq 13.5 s, rho=0.556
-# Inferenz:     1x L4-24, vLLM --max-num-seqs 120, ~700 CHF/Mo
-# => "bestimmt die INFERENZ die Kapazität" (10 > 3)
+<!-- ausgabe: gw-contactcenter vergleich -->
+```text
+Erlang-Formel gegen ereignisdiskrete Simulation (Seed 1, 200'000 Anrufe je Szenario, 20 Batches)
+Szenario             A Erl.   n  Kennzahl        Formel   Simulation  ± 1 SE
+README-Beispiel      1.667   3  P(warten)       29.98 %      29.91 %   0.23 %
+README-Beispiel      1.667   3  ASA s             26.98        27.00     0.52
+README-Beispiel      1.667   3  SL 20 s         76.00 %      76.08 %   0.22 %
+README-Beispiel      1.667   4  P(warten)       10.25 %      10.33 %   0.14 %
+README-Beispiel      1.667   4  ASA s              5.27         5.39     0.15
+README-Beispiel      1.667   4  SL 20 s         93.05 %      92.99 %   0.14 %
+Call Centre Helper  10.000  13  P(warten)       28.53 %      28.14 %   0.66 %
+Call Centre Helper  10.000  13  ASA s             17.12        16.86     1.02
+Call Centre Helper  10.000  13  SL 20 s         79.56 %      80.04 %   0.63 %
+Call Centre Helper  10.000  14  P(warten)       17.41 %      17.03 %   0.49 %
+Call Centre Helper  10.000  14  ASA s              7.84         7.58     0.45
+Call Centre Helper  10.000  14  SL 20 s         88.84 %      89.26 %   0.41 %
+hohe Last           30.000  33  P(warten)       49.05 %      48.95 %   1.69 %
+hohe Last           30.000  33  ASA s             49.05        52.77     6.31
+hohe Last           30.000  33  SL 20 s         59.84 %      59.96 %   1.91 %
+Erlang-A            10.000  10  P(warten)       42.34 %      42.23 %   0.27 %
+Erlang-A            10.000  10  P(Abbruch)      15.75 %      15.61 %   0.15 %
+Erlang-A            10.000  10  Wartezeit s        9.45         9.42     0.11
+Erlang-A            10.000  10  SL 20 s         71.80 %      71.96 %   0.25 %
+M/G/n CV 0.5        10.000  13  P(warten)       28.53 %      27.00 %   0.39 %
+M/G/n CV 0.5        10.000  13  ASA s             17.12        11.11     0.27
+M/G/n CV 0.5        10.000  13  SL 20 s         79.56 %      82.27 %   0.35 %
 ```
 
-## 5. Skalierungstabelle (Voice, 5 -> 1000)
+Die letzte Zeilengruppe ist absichtlich keine Übereinstimmung: Mit weniger variablen
+Gesprächen (lognormal, Variationskoeffizient 0.5 statt 1) warten Anrufe deutlich kürzer, als
+Erlang-C vorhersagt. Die Formel ist dann konservativ. Wer die Verteilung der eigenen
+Gesprächsdauern kennt, kann mit `simuliere(..., bearbeitung_cv=...)` gegenrechnen.
 
-Nach `platforms` `selbstbau-blaupause.md` §4. Alle
-Kosten **Grössenordnungen** (10/2026, CH), keine Offerte:
+## Sprachagent-Kanäle (Erlang-B)
 
-| Grösse | Inferenz | GPU | ~CHF/Mo |
-|---|---|---|---|
-| **5** | Ollama Mac, Qwen3-27B | 0 | ~20-40 |
-| **20** | 1x A100, vLLM, 14B | 1 | ~250-400 |
-| **50** | 1-2x A100, vLLM | 2 | ~600-900 |
-| **250** | K3s, 2-4x H100 | 2-4 | 2'000-3'500 |
-| **1000** | K8s, 4-8x H100, DR | 4-8 | 8'000-15'000 |
+Ein Sprachagent mit k Kanälen nimmt jeden Anruf an, solange ein Kanal frei ist. Die
+Wahrscheinlichkeit, dass alle belegt sind, ist B(k, A) (bei Poisson-Ankünften unabhängig von
+der Verteilung der Gesprächsdauer). `kanaele_fuer_blockierung(A, 0.01)` liefert die kleinste
+Kanalzahl für höchstens 1 % Überlauf. Annahme: Der Bot führt Gespräche ähnlich lang wie
+Menschen; ist er schneller oder langsamer, mit einer eigenen AHT rechnen.
 
-Ab ~500-1000 beginnt der **Cluster-Regime**, wo der Betrieb
-(2 Köpfen, Pager) teurer wird als die Hardware.
+## Abbrüche (Erlang-A)
 
-## 6. Die 3 Kosten-Posten (pro Angebot)
+Real legen Wartende auf. Erlang-A (M/M/n+M) nimmt eine exponentiell verteilte Geduld mit
+Mittelwert `--geduld-s` an. Berechnet wird die stationäre Verteilung der Anzahl Anrufe im
+System direkt (im Log-Raum, abgeschnitten bei vernachlässigbarer Restwahrscheinlichkeit),
+daraus Wartewahrscheinlichkeit, Abbruchquote und mittlere Wartezeit; der Servicelevel
+(Gesprächsbeginn innert t, Abbrüche zählen als verfehlt) über Uniformisierung der Wartezeit
+eines markierten Anrufs. Geprüft gegen die Grenzfälle (unendliche Geduld ergibt Erlang-C;
+Geduld gleich AHT ergibt exakt die Poisson-Verteilung) und gegen die Simulation. Quelle des
+Modells: O. Garnett, A. Mandelbaum, M. Reiman, «Designing a Call Center with Impatient
+Customers», Manufacturing & Service Operations Management 4(3), 2002.
 
-Vor **jeder** Offerte:
+## Grenzen
 
-1. **GPU-Infrastruktur** (A100/H100, gemietet/eigen, CH).
-2. **Cloud / DSG-Aufbewahrung** (Postgres, Vektor, Ton).
-3. **FTE-Personal** (KI-Owner + Dev, nach Aufwand).
+- Poisson-Ankünfte sind eine Näherung; Rückrufwellen nach Werbeaktionen oder Störungen
+  verletzen sie.
+- Die Rechnung gilt pro Stunde mit konstanter Last; Schichtplanung über den Tag ist nicht
+  Teil des Rechners.
+- Abwesenheiten (Pausen, Schulung, Krankheit) nur als pauschaler Faktor `--abwesenheit`.
+- Mehrere Skills oder Sprachen pro Agent (Skill-Based Routing) sind nicht modelliert.
 
-FTE sind fast nie der billige Teil, aber in einer KMU der
-eigentliche **Wert** (die Personen, die es betreuen).
-
-## 7. Grenzen (ehrlich)
-
-- **Grössenordnungen, nicht Offerte.** Vor jedem Angebot neu
-  (A100/H100-Liste / Exoscale / Infomaniak).
-- **Slots pro GPU sind Erfahrungswerte** (nicht gemessen) -
-  eigenen Load-Test (`locust` in `docs/04-vllm-inferenz.md` §5).
-- **Gipfelfaktor 0.25** ist Erfahrungswert; pro Kunden
-  aktuell messen.
-- **24/7-Betrieb** (ab ~500) braucht **2 Köpfen**, nicht 1
-  (s. `docs/10-betrieb-ops.md`).
-
-## 8. Kritische Fragen
+## Kritische Fragen
 
 | # | Frage | Warum |
 |---|---|---|
-| 1 | Wieviele Anrufe in der GIPFELSTUNDE? | Bestimmt Erlang-C (Problem A). |
-| 2 | Wieviele *gleichzeitig* (simultan)? | Bestimmt vLLM-Slots (Problem B). |
-| 3 | Welche GPU (L4, L40S, A100, H100)? | L4/L40S = KMU-Standard bis ~10-20 Gespräche mit 8 B; A100/H100 erst ab ~30 Gesprächen oder 32 B+ (`voiceagent.sizing`). |
-| 4 | Sind Token/Tag < 10M (API genug)? | Ja: keine GPU; Nein: vLLM. |
-| 5 | Ist 24/7 (> 500) nötig? | Nein: 8h-Betrieb, 1 Kopf; Ja: Cluster, 2+. |
+| 1 | Wie viele Anrufe kommen in der geschäftigsten Stunde einer typischen Woche? | Ersetzt die 25-%-Annahme. |
+| 2 | Welches Ziel gilt: mittlere Wartezeit oder Servicelevel (z. B. 80 % in 20 s)? | Führt zu unterschiedlichen Zahlen. |
+| 3 | Wie lange sind Bot-Gespräche im Vergleich zu menschlichen? | Bestimmt die Kanalzahl und damit die GPU. |

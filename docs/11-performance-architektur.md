@@ -1,287 +1,147 @@
-# 11 - Performance-Prüfung und Hardware-Architektur
+# 11 GPU-Dimensionierung: Speicher, Bandbreite, Zeit bis zum ersten Token
 
-> **Stand: Oktober 2026.** Diese Doku prüft konkret, ob die in
-> `OFFENE_PUNKTE.md` #4 skizzierte Lösung (200 Anrufe/Tag, 10 zugleich,
-> vLLM + Whisper) **technisch umsetzbar** ist, und legt die nötige
-> Hardware-Architektur fest. GPU-Preise (A100 80 GB ~2600 CHF/Mo)
-> wandern; vor jedem Angebot die aktuellen Anbieter-Preise neu prüfen
-> (s. `platforms` → `gpu-deployment-entscheid.md`).
-> **Keine Offerte, kein Rechtsrat.**
+## Die Frage
 
-> **Korrektur v2 (26.10.2026):** Die Empfehlung «1x A100 80 GB» ist für
-> 10 Gespräche mit einem 7-8-B-Modell rund 4x überdimensioniert. Aus
-> KV-Cache, Bandbreite und Duty Cycle gerechnet reicht **1x L4 24 GB**
-> (~700 CHF/Mo); Telefon-Audio ist G.711 8 kHz (366 statt 732 MB/Tag);
-> die Latenz-Summe unten enthält kein Endpointing. Massgeblich ist
-> [`docs/12`](12-zielarchitektur.md) und `python -m voiceagent.sizing`.
-> Der Text unten bleibt als Herleitung von v1 stehen.
+Wie viele und welche GPUs braucht das Sprachmodell für k gleichzeitige Gespräche? Die
+Kanalzahl k kommt aus Erlang-B ([05](05-skalierung.md)). `gw-contactcenter gpu` rechnet die
+Antwort aus der Modellarchitektur und Datenblattwerten. Das Ergebnis sind **Obergrenzen**;
+eine Messung auf der Zielhardware ersetzt es nicht ([15](15-latenz.md)).
 
-## 1. Die kurze Antwort
+## Rechenweg
 
-**Ja, es ist technisch umsetzbar - auf einer einzelnen A100 80 GB.**
-Die drei Samples beantworten es mit Zahlen (`python beispiele/
-skalierungsrechner.py rechner 200 10`):
+Alle Formeln stehen in `gw_contactcenter/sizing.py`.
 
-| Frage | Antwort |
-|---|---|
-| 200 Anrufe/Tag | **Erlang-C: 3 Agenten** (Gipfelstunde 50 Anr/Std, A=1.67, Wq 13.5 s) |
-| 10 Anrufe zugleich | **1x A100 80 GB** reicht (250 vLLM-Slots / 7B-Modell) |
-| Engpass | **10 zugleich > 3 Agenten** → die Inference bestimmt die Kapazität |
-| Ton-Speicher/Tag | **~732 MB Tag** (16 kHz 16 bit, 2-min-Anruf), 21.5 GB/Monat 24/7 |
-| Voice-Reply-Latenz | **~805 ms** (< 1500 ms Ziel, mit `--enable-prefix-caching`) |
+1. **Parameter aus der Architektur**: pro Schicht Q-, K-, V- und O-Projektion (GQA) und drei
+   MLP-Matrizen (SwiGLU), dazu Einbettung und LM-Kopf. Die Tests vergleichen das Ergebnis
+   mit den veröffentlichten Parameterzahlen.
+2. **Gewichtsspeicher je Präzision**: BF16 2 Byte pro Gewicht; FP8 1 Byte für die linearen
+   Schichten; INT4 (AWQ/GPTQ, Gruppengrösse 128) 0.5 Byte plus 2.5 Byte pro 128er-Gruppe.
+   Annahme: Einbettung und LM-Kopf bleiben in 16 Bit.
+3. **KV-Cache pro Token**: 2 (K und V) × Schichten × KV-Köpfe × Kopfdimension × Byte pro
+   Wert (2, mit `--kv-cache-dtype fp8` 1).
+4. **Gleichzeitig aktive Anfragen**: Ein Gespräch beansprucht das Modell nur, solange eine
+   Antwort entsteht (Duty Cycle, Annahme 20 %). Die Zahl aktiver Anfragen ist binomialverteilt;
+   gerechnet wird mit dem 99-%-Quantil.
+5. **Dekodierrate**: Pro Schritt liest die GPU alle Gewichte und den KV-Cache jeder aktiven
+   Anfrage. Obergrenze pro Strom = Speicherbandbreite / (Gewichte + aktive Anfragen ×
+   Kontext × KV pro Token). Erreichbar ist ein Teil davon (Annahme 50 %).
+6. **Zeit bis zum ersten Token (Prefill)**: 2 × Parameter × Token FLOP bei 40 % Auslastung
+   der Tensor-Rechenwerke (Annahme). «Cache» heisst: Mit Prefix Caching sind nur die neuen
+   Token des Gesprächswechsels zu rechnen (Annahme 300); «kalt» heisst: der ganze Kontext.
 
-Die zentrale Erkenntnis ist identisch mit Doku 05: **«200 Anrufe/Tag und
-10 zugleich**» ist **ein Wort für zwei Engpässe**. 200/Tag ist ein
-Durchsatzproblem an der Warteschlange (Erlang, braucht nur 3 Agenten);
-10 zugleich ist ein Parallelismusproblem an der GPU (vLLM-Slots). Bei
-diesem Lastprofil gewinnt der Parallelismus (10 > 3). Für eine KMU mit
-weniger als 10 gleichzeitigen Anrufern wäre die Antwort: **eine Karte
-übergenügt**.
+Eine Konfiguration gilt als passend, wenn Gewichte und KV-Cache im nutzbaren Speicher Platz
+haben, die angenommene Dekodierrate mindestens 40 Token/s pro Strom erreicht und die Zeit bis
+zum ersten Token mit Cache höchstens 300 ms beträgt. Die 40 Token/s folgen aus dem
+Latenzbudget: Ein erster Satz von etwa 10 Token soll in 250 ms fertig sein
+([15](15-latenz.md)).
 
-## 2. Was der Rechner im ersten Durchgang NICHT sah (3 Bugs)
+## Quellen
 
-Beim Prüfen (Doku 10, `beispiele/qualitaetstest.py` Q3/Q4) sind
-drei Fehler im alten `skalierungsrechner.py` aufgefallen und gefixt:
+| Eingabe | Werte | Quelle |
+|---|---|---|
+| Qwen3-8B | 36 Schichten, versteckt 4096, MLP 12288, 32 Q- und 8 KV-Köpfe, Kopfdimension 128, Vokabular 151'936 | `config.json` auf Hugging Face (Qwen/Qwen3-8B) |
+| Llama 3.1 8B / 70B | 32 / 80 Schichten, versteckt 4096 / 8192, MLP 14336 / 28672, 8 KV-Köpfe | Llama-3-Bericht, arXiv:2407.21783, Tabelle 3 |
+| NVIDIA L4 | 24 GB, 300 GB/s, 121 TFLOPS BF16 dicht | Produktseite NVIDIA |
+| NVIDIA L40S | 48 GB, 864 GB/s, 362 TFLOPS BF16 dicht | Datenblatt NVIDIA (2023) |
+| NVIDIA A100 80 GB SXM | 80 GB, 2039 GB/s, 312 TFLOPS BF16 dicht | Produktseite NVIDIA |
+| NVIDIA H100 SXM | 80 GB, 3350 GB/s, 989.5 TFLOPS BF16 dicht | Produktseite NVIDIA |
+| vLLM | `--gpu-memory-utilization` Standard 0.92 | `vllm/config/cache.py`, v0.32.0 |
 
-| # | Fehler | Besser | Wirkung |
-|---|---|---|---|
-| 1 | **Busy-hour-Faktor** wurde falsch an `lambda_h * 0.25` anstatt an `anrufe * 0.25` gerechnet → 8x zu wenig Agenten | `calls_in_peak = anrufe * busy_hour_factor` | **1 Agent → 3 Agenten** |
-| 2 | **Ton-Speicher** wurde nicht gerechnet, nur Text (0.13 MB/Tag) | `datenaufwand(...)` mit Ton | **1.3 MB → 732 MB/Tag** (Faktor ~550) |
-| 3 | **Latenz** wurde nie geprüft, ob Voice-Reply < 1.5 s passt | `laten_z_pruefen(...)` | Neue Prüfung: **805 ms < Ziel** |
+Die vollständigen Links stehen in `sizing.py`. Datenblattangaben mit Sparsity sind halbiert,
+weil Sprachmodelle in der Inferenz dicht rechnen.
 
-**Fehler 2 ist der entscheidende**: Eine KMU, die auf 1.3 MB/Tag
-rechnet und 732 MB/Tag (mit Ton) braucht, hat **ein 550-fach
-falsches Speicherbudget**. Das ist der typische Fall, wo die
-Erstschätzung korrekt aussieht und die Umsetzung scheitert, weil
-**Roh-Ton viel grösser als Text ist**.
+## Beispiel: 8-B-Modell, 10 Gespräche
 
-## 3. Die drei Engpässe - getrennt betrachtet
+<!-- ausgabe: gw-contactcenter gpu --modell qwen3-8b --gespraeche 10 -->
+```text
+GPU-Dimensionierung (Obergrenzen aus Datenblattwerten, keine Messung)
+Modell qwen3-8b: 8.19 Mrd. Parameter (6.95 Mrd. in linearen Schichten)
+  Quelle: https://huggingface.co/Qwen/Qwen3-8B/blob/main/config.json
+KV-Cache: 2 x 36 Schichten x 8 KV-Köpfe x 128 x 2 Byte = 147'456 Byte/Token
+  10 Gespräche x 6'000 Token = 60'000 Token -> 8.24 GiB
+Aktive LLM-Anfragen (99-%-Quantil, Duty Cycle 20 % angenommen): 5
+Kriterien: Gewichte + KV-Cache passen, >= 40 Tok/s pro Strom nach Effizienzannahme, TTFT mit Prefix-Cache <= 300 ms (300 neue Token).
 
-### 3.1 Engpass 1: ACD-Warteschlange (Erlang-C, 3 Agenten)
-Bei 200 Anrufen/Tag über 8 Stunden sind das 25 Anruf/Std im
-Mittel; die GIPFELSTUNDE ist 25% des Tags = 50 Anrufe/Std.
-Erlang-C mit 2-min-Handhabung gibt A = 1.67 → **3 Agenten** für
-Wq < 20 s. Das ist ein **Personenengpass, nicht ein
-Technikengpass**. Für eine KMU: 3 Mitarbeiter/Agenten pro
-Schicht (oder eine Warteschlange + 1 Agent für niedrigeren
-Service-Level). **Die Inference ist hier nicht der Engpass.**
+Karten GPU            Präz.  Gewichte  KV-Cache  verfügbar  Tok/s/Strom   TTFT ms
+                              GiB       GiB       GiB     max | Ann.  Cache | kalt
+     1 L40S           int4       5.7       8.2       42.7      82 | 41      34 | 679
+     1 H100-SXM       int4       5.7       8.2       72.1     318 | 159     12 | 248
+     1 H100-SXM       fp8        8.8       8.2       72.1     242 | 121      6 | 124
+     1 A100-80GB-SXM  int4       5.7       8.2       72.1     194 | 97      39 | 788
+     1 H100-SXM       bf16      15.3       8.2       72.1     161 | 81      12 | 248
+     1 A100-80GB-SXM  bf16      15.3       8.2       72.1      98 | 49      39 | 788
+     2 L40S           fp8        8.8       8.2       85.3     125 | 62       8 | 168
+     2 L40S           bf16      15.3       8.2       85.3      83 | 42      17 | 339
 
-### 3.2 Engpass 2: vLLM-Inferenz (1 GPU, 250 Slots)
-10 Anrufe zugleich × 7B-Modell auf A100-80: **250 Slots/GPU**
-(vLLM `--max-num-seqs 250`). Die 10 Streams passen mit
-**1x GPU**. Für 20-50 zugleich weiterhin 1x A100; ab ~100
-gleichzeitig (also > 250 Streams) **2x A100-80** (oder
-**1x H100** für 200+ Streams via Kontext-Optimierung).
-
-### 3.3 Engpass 3: Ton-Speicher (21.5 GB/Monat)
-16 kHz, 16-bit-mono: 32000 B/sek × 120 s × 200/Tag =
-**732 MB/Tag**. 24/7 über 30 Tage: **~21.5 GB/Monat**.
-Für **9 Monate Aufbewahrung** (Doku 06, §4): **~193 GB/Monat**
-bei 100% Roh-Ton-Beibehaltung; mit **Wochen-Beibehaltung +
-Transkript-Primär** (Doku 06, §4): **~5-10 GB/Monat**.
-Die **Speicher-Grösse ist kein Engpass** für eine KMU, aber
-das **Budget muss korrekt berechnet sein** (Bug 2).
-
-## 4. Latenz: passt für Voice-Reply?
-
-Für ein *echtes* Voice-Reply (Anrufer hört sofort eine
-Antwort) muss die Summe **< 1.5 s** bleiben (sonst wirkt
-der Anrufer ungeduldig). Die 6 Etappen (Doku 03):
-
-| Etappe | Zeit (ms) | Anmerkung |
-|---|---:|---|
-| 1. Ton-Puffer (VAD) | 100 | 500-ms-Ringpuffer auf CPU |
-| 2. ASR (faster-whisper, stream) | 300 | Whisper-tiny, GPU, RTF < 1 |
-| 3. LLM-TTFT (Prefill + 1 Token) | **80** | **mit** `--enable-prefix-caching`; 200 ms ohne |
-| 4. Antwort-Streaming (TTFT→fertig) | 300 | 1-2 Sätze, ~50 ms/Token |
-| 5. TTS (stream) | 300 | VITS/Coqui, GPU, ~500-char-Büro-Satz |
-| 6. RTT + Netz | 25 | internes Netz |
-| **Summe** | **~805 ms** | **unter 1500 ms Ziel** |
-
-**Schluss: passt.** Mit `--enable-prefix-caching` (vLLM) sinkt
-die LLM-TTFT von 200 auf 80 ms, das ist der entscheidende
-Einflussfaktor. Ohne Prefix-Caching: 925 ms, immer noch unter
-dem Ziel. Für Text-only-Chat/E-Mail (kein Voice): diese
-6 Etappen fallen weg, **Latenz < 1 s** leicht erreichbar.
-
-## 5. Die konkrete Hardware-Architektur (für 200/Tag + 10 zugleich)
-
-### 5.1 Minimal-Architektur (eine GPU)
+Annahmen: Effizienz 50 % der Roofline, MFU 40 %, Reserve 1.5 GiB/Karte, --gpu-memory-utilization 0.92.
+Vor einer Beschaffung auf der Zielhardware messen (gw-contactcenter latenz-messen).
 ```
-+-------------------------------------------------------------+
-|  Mac Mini / kleiner Server (1x A100 80 GB, 128-256 GB RAM)  |
-|                                                             |
-|  vLLM (7B-FP16)          |   250 Slots/GPU, max-num-seqs=250|
-|  + --enable-prefix-cache |   → 10 gleichzeitige Streams     |
-|  + /v1/chat/completions  |   (OpenAI-kompatibel, Anti-Lock) |
-|  + --max-model-len 8192  |                                   |
-|  ------------------------|--------------------------------   |
-|  faster-whisper (tiny/base|  1x CPU Core (ASR-Stream)        |
-|   , RTF <1, GPU-ASR       |  → 300 ms pro Audio-Büro-Satz    |
-|                            |                                  |
-|  Postgres (pgvector)       |   RAG-Index + Tickets + V0-V1   |
-|  + Redis (Queue)           |   V2-V4 LOCALL (nicht in Cloud) |
-|  --------------------------|--------------------------------  |
-|  Prometheus + Grafana       |  CPU/GPU/RAM/Metriken           |
-|  + Langfuse (optional)      |  Eval-Trail bei > 200 Fällen |
-+-------------------------------------------------------------+
-   ~2600 CHF/Mo (24/7) / ~800 CHF/Mo (8h, 262h)
+
+Lesart:
+
+- **Eine L4 fehlt in der Tabelle**, obwohl der Speicher reicht (INT4-Gewichte und KV-Cache
+  zusammen rund 14 GiB von 20.6 GiB nutzbar). Bei 5 aktiven Anfragen mit je 6000 Token liest
+  jeder Dekodierschritt die Gewichte und gut 4 GiB KV-Cache; das begrenzt die Karte auf
+  28.5 Token/s pro Strom, mit der Effizienzannahme auf 14.3. «Passt in den
+  Speicher» heisst nicht «schnell genug».
+- Die L40S mit INT4 erreicht die Schwelle nur knapp. Ob sie im Betrieb reicht, hängt an der
+  tatsächlich erreichten Effizienz; das zeigt nur eine Messung.
+- Der Kontext ist der grösste Hebel. Mit 2000 statt 6000 Token, KV-Cache in FP8 und 70 %
+  Effizienz lässt sich die Rechnung wiederholen:
+  `gw-contactcenter gpu --kontext 2000 --kv-fp8 --effizienz 0.7`. Eine einzelne L4 erscheint
+  erst, wenn zusätzlich die Schwelle auf 25 Token/s sinkt (`--min-tokens-s 25`).
+- Die Spalte «kalt» zeigt, warum Prefix Caching nötig ist: Ohne Cache dauert das erste Token
+  bei 6000 Token Kontext auf einer L40S rund 0.7 s statt 34 ms.
+
+## Grösseres Modell: 70 B, 10 Gespräche
+
+<!-- ausgabe: gw-contactcenter gpu --modell llama-3.1-70b --gespraeche 10 -->
+```text
+GPU-Dimensionierung (Obergrenzen aus Datenblattwerten, keine Messung)
+Modell llama-3.1-70b: 70.55 Mrd. Parameter (68.45 Mrd. in linearen Schichten)
+  Quelle: https://arxiv.org/abs/2407.21783 (Tabelle 3)
+KV-Cache: 2 x 80 Schichten x 8 KV-Köpfe x 128 x 2 Byte = 327'680 Byte/Token
+  10 Gespräche x 6'000 Token = 60'000 Token -> 18.31 GiB
+Aktive LLM-Anfragen (99-%-Quantil, Duty Cycle 20 % angenommen): 5
+Kriterien: Gewichte + KV-Cache passen, >= 40 Tok/s pro Strom nach Effizienzannahme, TTFT mit Prefix-Cache <= 300 ms (300 neue Token).
+
+Karten GPU            Präz.  Gewichte  KV-Cache  verfügbar  Tok/s/Strom   TTFT ms
+                              GiB       GiB       GiB     max | Ann.  Cache | kalt
+     2 H100-SXM       int4      37.0      18.3      144.2     135 | 68      53 | 1069
+     2 A100-80GB-SXM  int4      37.0      18.3      144.2      82 | 41     170 | 3392
+     2 H100-SXM       fp8       67.7      18.3      144.2      81 | 41      27 | 535
+     4 H100-SXM       bf16     131.4      18.3      288.4      89 | 44      27 | 535
+     8 L40S           int4      37.0      18.3      341.3     139 | 70      37 | 731
+     8 L40S           fp8       67.7      18.3      341.3      84 | 42      18 | 361
+     8 A100-80GB-SXM  bf16     131.4      18.3      576.8     108 | 54      42 | 848
+
+Annahmen: Effizienz 50 % der Roofline, MFU 40 %, Reserve 1.5 GiB/Karte, --gpu-memory-utilization 0.92.
+Vor einer Beschaffung auf der Zielhardware messen (gw-contactcenter latenz-messen).
 ```
-- **vLLM** ist die *einzige* GPU-kritische Instanz.
-- **ASR (faster-whisper)** läuft auf einem **separaten CPU-Core**
-  mit GPU-Access (nicht in vLLM-Slots, keine Konkurrenz).
-- **Postgres + pgvector** für RAG + Tickets (`platforms`
-  → `beispiele/rag_permission.py`, s. Doku 06 §3).
-- **V2-V4 Daten (Intern/Vertraulich/Streng) bleiben lokal**
-  (Doku 06, §4 - `handoff_router`-Cloud-Flag `False` bei
-  V2-V4). V0-V1 dürfen in CH-Cloud (Infomaniak / Exoscale).
 
-### 5.2 Warum NICHT Ollama für 10 zugleich
-Ollama passt für **< 3 Agenten** (s. `docs/04-vllm`, Tabelle).
-10 zugleich + Kontextfenster > 4096 + Voice-Reply-Latenz
-(< 1.5 s) → **vLLM mit Prefix-Caching ist zwingend**.
-Ollama hat kein Prefix-Caching und kein Continuous-Batching
-für den parallelen Fall; bei 10 parallel sind die
-Wartezeiten mit Ollama ~3× höher. **Empfehlung: vLLM für
-ab 10 zugleich; Ollama für PoC mit < 3 parallel.**
+Bei mehreren Karten unterstellt die Rechnung ideale Tensor-Parallelität (Bandbreite und
+Rechenleistung addieren sich, keine Kommunikationskosten). Die Zahlen sind damit noch
+optimistischer als bei einer Karte.
 
-### 5.3 Was passiert bei 500/Tag?
-- **Erlang-C: 500/Tag × 0.25 = 125 Anr/Std × 2 min = 4.17 A
-  → ~5 Agenten.**
-- **vLLM: 500 × 2 min ÷ 8h = ~125/Std ÷ 62 = 70-100
-  gleichzeitige Streams** → **1x A100 (250 Slots) reicht noch.**
-- Bei **> 1000/Tag** → **2x A100** für ~500 gleichzeitige
-  Streams (500 Agenten × Erlang-C, 1000 Anruf × busy-hour).
-- **Die Kosten** (500/Tag, 24/7): **2 x 2600 = ~5200 CHF/Mo
-  (GPU)** + ~500 CHF/Mo (Cloud-Netz/Storage), **10'000+
-  CHF/Mo mit FTE** (2 Agenten + 1 KI-Owner s. Doku 09).
+## Was die Rechnung nicht enthält
 
-## 6. Grenzen dieser Prüfung (ehrlich)
+- ASR und TTS auf derselben Karte: Ihr Speicher- und Rechenbedarf ist nicht modelliert; mit
+  `--speicheranteil` lässt sich der Anteil für vLLM verkleinern ([04](04-vllm-inferenz.md)).
+- Rechenengpässe beim Dekodieren grosser Batches, Kernel-Overhead, Scheduling von vLLM.
+- Preise: Das Repo enthält keine. Mit `--preise preise.json` (eigene Preise je Karte)
+  sortiert der Rechner nach Gesamtpreis.
 
-- **Die Latenz-Zahlen sind THEORETISCH.** Eine Messung
-  mit realen Ton-Dateien (nicht mit Mock) ist nötig, bevor
-  man «Voice-Reply passt» sagt. `beispiele/qualitaetstest.py`
-  Q3 prüft die **Formel**, nicht den **Echten-Wert**. Für
-  einen konkreten Kunden: **30-50 echte Ton-Dateien in
-  1-2 Sprachvarianten (de-CH, de-D) messen**.
-- **Die ASR-WER (Word-Error-Rate) ist NICHT geprüft.**
-  Die Doku 03 zeigt `WER < 5%` für Hochdeutsch,
-  **10-15% für Schweizerdeutsch** (Dialekt-Modell nötig).
-  **Ohne feingestelltes de-CH-Model: WER kann 20%+
-  sein** → unbrauchbar. **Empfehlung: PoC mit
-  `faster-whisper` + feingeschultem de-CH-Modell
-  (z. B. via HuggingFace, nicht Standard).**
-- **V2-V3 Cloud-Entscheid ist pro KMU individuell.**
-  `handoff_router.py` sagt `V2 = dar_cloud: False`,
-  aber die **tatsächliche Entscheidung** (Darf
-  Bestellungs-Transkript in CH-Cloud?) ist ein
-  **DSG-Entscheid, kein Technik-Entscheid** (Doku 06,
-  §1, OFFENE_PUNKTE #4). **Dieses Repo sagt WO die
-  Daten liegen, NICHT ob es erlaubt ist.**
-- **200/Tag ist ein Schätzwert.** **Keine KMU hat
-  exakt 200 Anrufe/Tag.** Für ein konkretes Angebot:
-  **30-Tage-Messung der echten Anrufzahl +
-  8-Stunden-Betriebszeit (nicht 24/7) + Gipfel-Faktor
-  (nicht immer 0.25, für Einzelhandel
-  z. B. 0.15, für Bank 0.40).**
-- **V4 (Geschäftsleitung/Dienstag) ist kein
-  Standard-Szenario.** **Die meisten KMU
-  (V1-V3) brauchen gar keine V4-Autonomie** –
-  ein «vertrag-aenderung」-Fall reicht mit 2
-  Autonomiegrad **und 1d SLA**, s. `handoff_router.py`.
-- **Die GPU-Kosten (A100 80 GB, ~2600 CHF/Mo)
-  sind Stichtag 10/2026 (Doku 08, §6).** Vor dem
-  Angebot: **GPU-Preise bei 3-5 Anbietern
-  prüfen**. Für **8h-Betrieb** (nicht 24/7): **~800
-  CHF/Mo** (nicht 2600). **Die Kosten-Grössenordnung
-  wandert mit den Provider-Angeboten.**
+## Grenzen
 
-## 7. Kritische Fragen
+- Keine der Zahlen ist gemessen. Die Annahmen (Effizienz, MFU, Duty Cycle, Kontext) können
+  das Ergebnis um Faktoren verschieben.
+- Nur dichte Decoder-Modelle mit GQA und SwiGLU; Mixture-of-Experts-Modelle brauchen eine
+  andere Rechnung.
+
+## Kritische Fragen
 
 | # | Frage | Warum |
 |---|---|---|
-| 1 | **Habt ihr 30 Tage echte Anruf-Statistik** (Anr/Tag,
-     Gipfel-Faktor, 8h/24h)? | Ohne diese Zahlen ist
-     «200/Tag» und «10 zugleich» **Schätzwerte,
-     keine Fakten**. Das kann einen 5-fach
-     zu kleinen oder zu grossen Kauf auslösen. |
-| 2 | **Sprache: rein Hochdeutsch
-     oder Schweizerdeutsch?** | de-CH-Modelle
-     (feingestel) kosten 2× mehr
-     Rechenzeit, WER 10-15%
-     statt 5%. **Ohne feingestelltes
-     Modell: PoC ist unbrauchbar.**
-| 3 | **Voice-Reply oder
-     Text-only?** | Voice-Reply braucht
-     die 6 Etappen (ASR+TTS,
-     Latenz < 1.5 s). **Text-only
-     (Chat/E-Mail/WhatsApp) ist 3-5×
-     billiger** (keine ASR/TTS-Kosten),
-     und für die meisten
-     KMU-Use-Cases ausreichend
-     (Doku 05, §1). **Der
-     Use-Case entscheidet, nicht die
-     Technik.**
-| 4 | **8h-Betrieb oder
-     24/7?** | 8h: **1x A100,
-     ~800 CHF/Mo.** 24/7:
-     **1x A100, ~2600
-     CHF/Mo.** 2×
-     teur für 3× Betrieb.
-     **Die meisten KMU
-     brauchen 8h, nicht 24/7.**
-| 5 | **Wie viele V2-V4
-     (vertrauliche)
-     Daten pro Tag,
-     und darf ein
-     Teil in CH-Cloud
-     (Infomaniak/
-     Exoscale)?** |
-     V2-V3 in Cloud
-     ist ein **DSG-Entscheid,
-     kein Technik-Entscheid** (Doku
-     06). **Die Architektur
-     kann V0-V3 Cloud + V4
-     lokal (Split-Deployment)
-     – aber ob es
-     erlaubt ist, entscheidet
-     kein Rechner, sondern
-     die Rechtsbeistand.**
-| 6 | **Sollte für den PoC
-     eher Ollama
-     (kostengünstig,
-     PoC) oder
-     vLLM (Produkt,
-     10+) gewählt
-     werden?** | Für **< 3 parallel**:
-     Ollama (< 100 CHF
-     lokal) genügt.
-     Für **ab 10 parallel
-     + Voice-Reply
-     (< 1.5 s)**:
-     **vLLM ist zwingend**
-     (Doku 05, §6).
-     **Der PoC muss
-     die ZIEL-Architektur
-     abbilden, nicht die
-     einfachste.**
-| 7 | **Ist der Gipfel-Faktor
-     0.25 korrekt
-     für die Branche?**
-     (Einzelhandel 0.15,
-     Bank 0.40,
-     Call-Center 0.30) |
-     **Der Faktor
-     0.25 ist ein
-     «typisches»
-     Durchschnitt;
-     für eine konkrete
-     KMU muss
-     der Faktor aus
-     30-Tage-Daten
-     kommen.** Ohne
-     diesen Daten:
-     **der Rechner
-     ist ungeprägt,
-     s. OFFENE_PUNKTE
-     #8.**
+| 1 | Wie lang wird der Kontext pro Gespräch wirklich (System-Prompt, Wissen, Verlauf)? | Bestimmt KV-Cache und Dekodierrate. |
+| 2 | Welche Effizienz erreicht vLLM auf der Zielkarte mit dem gewählten Modell? | Messen mit `gw-contactcenter latenz-messen --parallel k`. |
+| 3 | Laufen ASR und TTS auf derselben GPU? | Verkleinert den Speicher für das Sprachmodell. |

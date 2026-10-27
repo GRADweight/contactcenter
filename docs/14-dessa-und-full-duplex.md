@@ -1,143 +1,94 @@
-# 14 - Dessa (Block) und Full-Duplex-Sprachmodelle: was anders ist
+# 14 Full-Duplex-Sprachmodelle: was anders ist
 
-> **Stand: 26. Oktober 2026.** Dessa wurde Ende Oktober 2026 vorgestellt
-> (Presseberichte ab 24.10.) und ist **nicht öffentlich verfügbar**. Alle Angaben stammen
-> aus Block-Aussagen und Presseberichten, nicht aus eigenen Tests.
+Stand der Quellen: Oktober 2026. Nichts in diesem Dossier ist im Repo getestet.
 
-## 1. Was Dessa ist
-
-Dessa ist ein Sprachmodell aus einem kleinen Forschungslabor von Block
-(Square, Cash App). Nach Block-Angaben ([TechCrunch][tc], [MindStudio][ms]):
-
-- **Speech-to-Speech**: Audio rein, Audio raus. Kein Zwischenschritt über Text.
-- **Full-Duplex**: hört und spricht gleichzeitig, kann "ja", "mhm" einwerfen,
-  mitten im Satz lachen und an natürlichen Stellen einsetzen.
-- **Nur aus gesprochener Sprache gelernt**: keine Transkripte, keine
-  Textdaten, kein vortrainiertes Sprachmodell darunter. Block behauptet,
-  Sprache aus "hunderte Male weniger Wörtern" gelernt zu haben als ein
-  typisches LLM.
-- **Training auf einem einzelnen NVIDIA-Rack** (GB200 NVL72).
-- **Läuft lokal** schneller als Echtzeit auf einem MacBook Pro mit M4 Max.
-- **Emotion im Modell**: Lachen, Pausen, Weinen, Wechsel von Tempo und Ton.
-- Block lässt **Sicherheitsforschende** testen, besonders auf Fälle, in
-  denen ein Sprachagent sein Gegenüber täuschen könnte.
-
-Nicht bekannt: Modellgrösse, Lizenz, Sprachen, gemessene Latenz,
-Werkzeugnutzung (Function Calling), Veröffentlichungsdatum.
-
-## 2. Was es von anderen unterscheidet
-
-Es gibt heute drei Bauarten von Sprachagenten:
+## Drei Bauarten
 
 ```mermaid
 flowchart TB
     subgraph K["A: Kaskade (dieses Repo)"]
-        a1[Ton] --> a2[ASR] --> a3[Text-LLM + Werkzeuge] --> a4[TTS] --> a5[Ton]
+        a1[Ton] --> a2[ASR] --> a3[Text-LLM und Werkzeuge] --> a4[TTS] --> a5[Ton]
     end
-    subgraph H["B: Halb-Kaskade / Realtime-APIs"]
-        b1[Ton] --> b2[Audio-Encoder + LLM<br/>Text-Wissen, Werkzeuge] --> b3[Ton]
-    end
-    subgraph F["C: Full-Duplex Speech-to-Speech"]
-        c1[Ton rein] <--> c2[ein Modell<br/>hört und spricht gleichzeitig] <--> c3[Ton raus]
+    subgraph F["B: Full-Duplex Speech-to-Speech"]
+        b1[Ton rein] <--> b2[ein Modell<br/>hört und spricht gleichzeitig] <--> b3[Ton raus]
     end
 ```
 
-| | **A: Kaskade** (unser Stack) | **B: Realtime-APIs** (Cloud) | **C: Full-Duplex** (Moshi, PersonaPlex, Dessa) |
-|---|---|---|---|
-| Natürlichkeit | gut, aber "Walkie-Talkie" | gut | **am menschlichsten**: Überlappen, Lachen, Einwürfe |
-| Wechsel-Latenz | 0.7-1 s (mit Tricks aus Doku 12) | ~0.3 s | sehr kurz; PersonaPlex nennt 0.07 s für Sprecherwechsel |
-| Unterbrechungen | per Turn-Taking nachgebaut | eingebaut | **nativ** |
-| Ton, Emotion der Kundschaft | geht im Text verloren | teilweise erhalten | **erhalten** |
-| Fakten, Werkzeuge, Bestellstatus | **stark** (Text-LLM + Tools) | stark | schwach: Dessa hat kein Text-LLM darunter, PersonaPlex noch keine Werkzeuge |
-| Kontrolle, Audit, Leitplanken | **satzgenau prüfbar** | teilweise | schwer: es gibt keinen Text, den man vor dem Sprechen prüfen kann |
-| Datenresidenz CH | **voll lokal möglich** | Cloud des Anbieters | lokal möglich (Dessa: MacBook), falls Gewichte verfügbar |
-| Deutsch / Schweizerdeutsch | ja (ASR-abhängig) | ja | PersonaPlex nur Englisch; Dessa unbekannt |
-| Verfügbarkeit | heute | heute | Moshi, PersonaPlex offen; **Dessa unveröffentlicht** |
+Dazwischen liegen Realtime-APIs von Cloud-Anbietern, die Audio direkt verarbeiten, intern
+aber auf einem Text-Sprachmodell mit Werkzeugen aufbauen.
 
-**Dessas eigentlicher Unterschied** zu Moshi und PersonaPlex ist nicht
-Full-Duplex (das können beide), sondern der Anspruch, **ohne Text und ohne
-LLM-Basis** gelernt zu haben, mit sehr wenig Rechenaufwand, und trotzdem
-lokal auf einem Laptop zu laufen. Moshi (Kyutai) und PersonaPlex (NVIDIA,
-7 B, auf Moshi aufgebaut, [MIT + NVIDIA Open Model License][pp]) nutzen
-dagegen Text-Vorwissen.
-
-Unabhängige Einordnung: MindStudio bewertet die Demos als **uneinheitlich**
-(manche natürlich, manche "plastikartig") und sieht Dessa auf der
-bestehenden Entwicklungslinie, nicht klar darüber. Benchmarks oder ein
-technisches Paper gibt es nicht.
-
-## 3. Was wir daraus übernehmen, heute
-
-Für einen KMU-Kundendienst sind **Fakten, Werkzeuge und Nachweisbarkeit**
-wichtiger als Lachen. Deshalb bleibt die Kaskade der Kern. Aber wir holen
-uns die Full-Duplex-Eigenschaften, die man nachbauen kann:
-
-| Full-Duplex-Eigenschaft | Nachbau in der Kaskade | Datei |
+| | Kaskade | Full-Duplex |
 |---|---|---|
-| Weiss, wann jemand fertig ist | semantisches Endpointing statt fester Stille | `turn.py` |
-| Lässt sich unterbrechen | Barge-in: Wiedergabeplan kappen, Genesys-Event, Verlauf kürzen | `pipeline.py` |
-| Ignoriert "mhm" | Backchannel-Erkennung | `turn.py` |
-| Antwortet sofort | Satz-Streaming, Prefix-Cache, Thinking aus | `gateway.py`, `deploy/` |
-| Läuft lokal | Modelle auf eigener GPU oder Mac (PoC) | `sizing.py` |
+| Sprecherwechsel | nachgebaut mit Endpointing und Barge-in | im Modell |
+| Ton und Emotion der Kundschaft | gehen im Text weitgehend verloren | bleiben erhalten |
+| Fakten und Werkzeuge | Text-LLM mit Werkzeugen | bei den offenen Modellen unten nicht dokumentiert |
+| Prüfen vor dem Sprechen | jeder Satz liegt als Text vor und wird geprüft | kein Text, den man vorher prüfen kann |
+| Sprachen | hängt von ASR, LLM und TTS ab | PersonaPlex laut Modellkarte nur Englisch |
 
-## 4. Wo ein Full-Duplex-Modell andocken würde
+## Zwei Beispiele
 
-Das Modell würde **Ohr und Mund** ersetzen (ASR + TTS und den Gesprächsfluss),
-nicht das **Gehirn** (Policy, Werkzeuge, Audit). Sinnvolles Muster:
+**PersonaPlex (NVIDIA)**, veröffentlicht am 15. Januar 2026: laut Modellkarte 7 Mrd.
+Parameter, aufgebaut auf Moshi (Kyutai), Gewichte unter der NVIDIA Open Model License,
+Englisch. Die Karte nennt für FullDuplexBench eine Latenz von 0.170 beim Sprecherwechsel und
+0.240 beim Unterbrechen (ohne Einheit; vermutlich Sekunden). Werkzeugaufrufe erwähnt sie
+nicht.
+
+**Dessa (Block)**, vorgestellt im Oktober 2026, laut TechCrunch ohne öffentlichen Zugang.
+Nach Angaben von Block ein Full-Duplex-Modell, trainiert auf menschlicher Sprache mit einem
+einzelnen GPU-Rack, lokal lauffähig auf einem Rechner wie einem MacBook mit M4 Max. Block lässt
+das Modell von Sicherheitsforschenden prüfen. Zu Grösse, Lizenz, Sprachen und Messwerten gibt
+es keine Angaben.
+
+## Was die Kaskade davon übernimmt
+
+| Eigenschaft | Umsetzung in diesem Repo | Datei |
+|---|---|---|
+| erkennt, wann jemand fertig ist | Endpointing mit Satzende-Schätzung | `turn.py` |
+| lässt sich unterbrechen | Barge-in: Wiedergabe kappen, Genesys informieren, Verlauf auf das Gesagte kürzen | `pipeline.py` |
+| ignoriert Rückmeldelaute | «mhm» und «genau» unterbrechen nicht | `turn.py` |
+| antwortet früh | Satz-Streaming, Prefix Caching, Denkmodus aus | `gateway.py`, `deploy/` |
+
+## Wo ein Full-Duplex-Modell andocken könnte
+
+Ein solches Modell würde ASR, TTS und Gesprächsfluss ersetzen, nicht Policy, Werkzeuge und
+Audit. Das setzt voraus, dass es Werkzeugaufrufe oder ein mitlaufendes Transkript liefert;
+sonst gibt es nichts zu prüfen und nichts zu protokollieren.
 
 ```mermaid
 flowchart LR
-    K[Kundschaft] <--> S2S[Full-Duplex-Modell<br/>Stimme, Timing, Emotion]
-    S2S -- "Werkzeug-Wunsch<br/>(Text/JSON)" --> D[Dialog + Policy<br/>V0-V4, R0-R3]
+    K[Kundschaft] <--> S2S[Full-Duplex-Modell]
+    S2S -- "Werkzeugwunsch (JSON)" --> D[Dialog und Policy]
     D --> W[Werkzeuge]
-    D -- "Fakten, erlaubte Antwort" --> S2S
+    D -- "erlaubte Fakten" --> S2S
     D -.-> A[(Audit)]
 ```
 
-Das setzt voraus, dass das Modell Werkzeugaufrufe oder zumindest ein
-mitlaufendes Transkript liefert. Ohne das gäbe es nichts zu prüfen und
-nichts zu protokollieren; für Bank, Versicherung und die meisten KMU wäre
-es dann nicht einsetzbar.
+Bedingungen für einen Einsatz im Kundendienst:
 
-## 5. Kriterien für einen Wechsel
+1. Gewichte und Lizenz erlauben den Betrieb im eigenen Rechenzentrum.
+2. Deutsch in Telefonqualität, je nach Kundschaft auch Schweizerdeutsch.
+3. Werkzeugaufrufe oder Transkript in Echtzeit.
+4. Dasselbe Golden-Set (`evals/`) besteht das Gate.
+5. Der Agent gibt sich als KI zu erkennen; je menschlicher die Stimme, desto wichtiger.
 
-Ein Full-Duplex-Modell (Dessa oder ein anderes) ersetzt die Kaskade, wenn
-**alle** Punkte erfüllt sind:
+## Grenzen
 
-1. **Gewichte und Lizenz** erlauben lokalen, kommerziellen Betrieb.
-2. **Deutsch** auf Telefonqualität, idealerweise Schweizerdeutsch verstehen.
-3. **Werkzeugaufrufe oder Transkript** in Echtzeit (sonst kein Audit).
-4. Besteht dasselbe **Golden-Set** (`evals/`) mit Sicherheit 100 %.
-5. **Offenlegung**: Der Agent sagt, dass er eine KI ist. Je menschlicher die
-   Stimme, desto wichtiger (Block selbst lässt genau das Täuschungsrisiko
-   untersuchen).
-6. Rechnet sich auf der vorhandenen Hardware (`sizing.py`-Logik gilt
-   sinngemäss: Speicher, Bandbreite, gleichzeitige Gespräche).
+- Alle Angaben stammen aus Modellkarten und Presseberichten mit unterschiedlicher
+  Messmethode.
+- Keine eigene Messung.
 
-## 6. Grenzen (ehrlich)
-
-- Dessa ist unveröffentlicht; nichts davon ist von uns getestet.
-- Die Vergleichswerte zu Latenz stammen aus Hersteller- und Presseangaben
-  mit unterschiedlicher Messmethode.
-- "Lernt ohne Text" ist eine Behauptung ohne Paper.
-
-## 7. Kritische Fragen
+## Kritische Fragen
 
 | # | Frage | Warum |
 |---|---|---|
-| 1 | Brauchen unsere Anrufe Empathie-Stimme oder vor allem richtige Fakten? | Kundendienst-Wert liegt meist in Fakten und Übergabe (Doku 00). |
-| 2 | Können wir ohne Text-Transkript auditieren? | Wenn nein: kein reines Speech-to-Speech. |
-| 3 | Wie reagiert Kundschaft auf eine sehr menschliche KI-Stimme? | Vertrauen und Transparenzpflichten (EU AI Act bei EU-Bezug). |
+| 1 | Zählt im eigenen Kundendienst eher die Stimme oder die richtige Auskunft? | Bestimmt, ob ein Full-Duplex-Modell einen Vorteil bringt. |
+| 2 | Lässt sich ohne Text-Transkript prüfen und protokollieren? | Ohne Prüfung keine Leitplanken. |
+| 3 | Wie reagiert die Kundschaft auf eine sehr menschliche KI-Stimme? | Vertrauen und Transparenzpflichten. |
 
 ## Quellen
 
-- [TechCrunch: Block's new voice model sounds eerily human][tc] (24.10.2026)
-- [MindStudio: Dessa, Block's unreleased full-duplex voice AI, explained][ms]
-- [GIGAZINE: Block announces Dessa](https://gigazine.net/gsc_news/en/20261026-dessa-conversation-ai/)
-- [Gizmodo: The many human-ish voices from Block's new AI model](https://gizmodo.com/check-out-the-many-uncanny-human-ish-voices-from-blocks-new-ai-model-2000830237)
-- [The Decoder: NVIDIA open-sources PersonaPlex][pp]
-- [Fora Soft: Pipecat vs LiveKit Agents](https://www.forasoft.com/blog/article/pipecat-vs-livekit-agents) (Turn Detection, Latenz-Grössenordnungen)
-
-[tc]: https://techcrunch.com/2026/10/24/blocks-new-voice-model-sounds-eerily-human/
-[ms]: https://www.mindstudio.ai/blog/dessa-voice-ai-block-jack-dorsey
-[pp]: https://the-decoder.com/nvidia-open-sources-personaplex-a-voice-ai-that-listens-and-talks-at-the-same-time/
+- NVIDIA, Modellkarte PersonaPlex-7B-v1, https://huggingface.co/nvidia/personaplex-7b-v1
+- TechCrunch, «Block's new voice model sounds eerily human», 24.10.2026,
+  https://techcrunch.com/2026/10/24/blocks-new-voice-model-sounds-eerily-human/
+- A. Défossez et al., «Moshi: a speech-text foundation model for real-time dialogue»,
+  arXiv:2410.00037

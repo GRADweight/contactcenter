@@ -1,105 +1,42 @@
-# 09 - Skills, Wissen und Schulung
+# 09 Rollen und Kompetenzen
 
-> **Stand: Oktober 2026.** Schulung ist
-> personenspezifisch, nicht generisch.
-> Was `training` (L1-L3) liefert
-> und was nicht, siehe dort.
+Ein Sprachagent verbindet Telefonie, Spracherkennung, Sprachmodelle, Datenschutz und Betrieb.
+Selten deckt eine Person alles ab. Die Tabelle zeigt, welche Kompetenz für welchen Teil dieses
+Repos nötig ist.
 
-## 1. Die ehrliche Lücke
+## Rollen
 
-Die meisten KMU haben **0 Personen**,
-die RAG + vLLM + DSG
-**zugleich** verstehen. Das ist
-der **bindende Faktor** für
-jedes Projekt. Ohne diese
-Person stirbt G3 (kein
-Abnehmer, kein
-Gate-Pass).
-
-
-## 2. Skills-Matrix nach Rolle
-
-| Rolle | Skills | L1 | L2 | L3 |
-|---|---|---|---|---|
-| **CTO/Entscheider** | Strategie, Budget, DSG-Grundlagen | - | X | - |
-| **KI-Owner** | vLLM, RAG, Monitoring, DSG | - | X | X |
-| **Dev/ML-Engineer** | Python, API, CI, vLLM | - | X | X |
-| **Agent/Operator** | CRM, Ticket, Runbook, PII-Auge | X | - | - |
-| **Enduser** | Basic KI-Nutzung (Prompting) | X | - | - |
-
-**L1** = Grundlagen (KI-Kan
-
-
-## 3. Wissen-Bereiche (5)
-
-| Bereich | Inhalt | Stufe |
+| Rolle | Aufgabe | Berührt im Repo |
 |---|---|---|
-| ASR / Transkribation | WER, Diariz, PII-Masking | L2 |
-| RAG / Vektor-DB | Chunks, pgvector/Qdrant, Permission | L2 |
-| vLLM / Inferenz | `--max-num-seqs`, OOM, Load-Test | L2 |
-| Governance / DSG | AI-Act, DSG-Art.8, Audit-Trail | L3 |
-| CRM / Ticket | HubSpot API, n8n, SLA-Workflow | L1 |
+| Fachverantwortung Kundendienst | Anliegen-Katalog, Risikoklassen, Übergabeziele, Golden-Set | `policy.py`, `evals/faelle.json` |
+| Genesys-Administration | Audio Connector, Architect-Flow, Queues, Test-Org | `audiohook.py`, [12](12-zielarchitektur.md) |
+| Entwicklung | Werkzeuge an CRM/ERP, Adapter, Tests | `tools.py`, `adapters/`, `tests/` |
+| ML- und Plattformbetrieb | vLLM, ASR, TTS, GPU, Modellwechsel, Lasttest | `deploy/`, `sizing.py`, `latenzmessung.py` |
+| Betrieb | Überwachung, Störungen, Schlüsselverwaltung, Audit-Prüfung | [10](10-betrieb-ops.md) |
+| Datenschutz und Recht | Aufzeichnung, Verarbeitungsorte, Aufbewahrung, Information der Anrufenden | [06](06-daten-speicherung.md) |
 
-Die Stufen nach
-`training`
-(L1=Foundation,
-L2=Strategie,
-L3=Orchestration).
+## Wissen, das oft fehlt
 
+- **Warteschlangen**: Unterschied zwischen Personalbedarf (Erlang-C) und Kanalzahl (Erlang-B);
+  Spitzenstunde statt Tagesdurchschnitt ([05](05-skalierung.md)).
+- **Latenz**: Was zur Zeit bis zum ersten Ton gehört, warum Endpointing dominiert, wie man
+  misst statt schätzt ([15](15-latenz.md)).
+- **Messen von Modellen**: Golden-Set, Holdout, Fehlalarme und verpasste Fälle getrennt
+  berichten ([16](16-leitplanken.md)).
+- **GPU-Dimensionierung**: Gewichte, KV-Cache, Speicherbandbreite; warum «passt in den
+  Speicher» nicht «schnell genug» heisst ([11](11-performance-architektur.md)).
+- **Prompt-Injection**: Regex-Filter sind eine erste Schicht, kein Schutz; wirksam sind
+  Berechtigungen, Bestätigungen und Übergabe ([16](16-leitplanken.md)).
 
-## 4. Schulung (GrADtrain, L1-L3)
+## Grenzen
 
-- **L1 (Foundation)**:
-  2 Tage, alle Rollen.
-  «Was ist KI,
-  wie funktioniert
-  RAG, was ist
-  DSG-Art. 8,
-  welche 5 Daten-
-  kategorien.»
-- **L2 (Strategie)**:
-  3-5 Tage,
-  KI-Owner + Dev.
-  «vLLM-Konfig,
-  RAG-Pipeline,
-  Monitor-
-  Setup, DSG-
-  Abnahme.»
-- **L3 (Orchestration)**:
-  1 Woche,
-  KI-Owner.
-  «Autonomie-
-  Grade,
-  Multi-Agent,
-  24/7-Entscheid,
-  Kalkulation.»
+- Keine Aussage zu Teamgrösse oder Pensen; das hängt von Volumen, Öffnungszeiten und
+  Betriebsmodell ab.
 
-
-## 5. Grenzen (ehrlich)
-
-- **Schulung ist personenspezifisch.**
-  Was eine Firma nach L2
-  verstanden hat,
-  hat die nächste
-  nicht.
-- **Kein 24/7-Wissen**
-  im Standard (L1-L3
-  ist 8h-Betrieb).
-- **Kein DSG-Fach-
-  mann** in L3 (
-  Rechtsbeistand
-  nötig).
-- **Keine Kalkulation**
-  in L3 -
-  Grössenordnungen
-  (s. 08-projekt-aufwand-kosten.md)
-
-## 6. Kritische Fragen
+## Kritische Fragen
 
 | # | Frage | Warum |
 |---|---|---|
-| 1 | Wer ist die eine Person? | Ohne KI-Owner: G3 stirbt. |
-| 2 | Wie viel Zeit (Wochen)? | 1 Woche L1, 2 Wo L2, L3 1 Wo. |
-| 3 | Wer prüft DSG (L3)? | Rechtsbeistand, nicht L3 allein. |
-| 4 | Welche Rolle braucht welche Stufen? | Matrix in 2. |
-| 5 | Ist 24/7-Wissen nötig? | Nur bei 500+ oder reguliert. |
+| 1 | Wer verantwortet den Anliegen-Katalog fachlich? | Ohne diese Rolle entscheidet die Technik über Risiken. |
+| 2 | Wer kann vLLM, ASR und TTS betreiben und aktualisieren? | Selbst betriebene Modelle brauchen laufende Pflege. |
+| 3 | Wer prüft das Audit und reagiert auf Auffälligkeiten? | Ein Audit, das niemand liest, schützt nicht. |
