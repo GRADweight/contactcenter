@@ -7,6 +7,7 @@ import pytest
 from gw_contactcenter.sizing import (
     GIB,
     GPUS,
+    MIN_TOKENS_S,
     MODELLE,
     Bedarf,
     Modell,
@@ -111,19 +112,28 @@ def test_ergebnisse_halten_ihre_bedingungen_ein() -> None:
 def test_l4_einzeln_hat_speicher_aber_zu_wenig_bandbreite_bei_standardannahmen() -> None:
     """Ehrliches Ergebnis: Für 10 Gespräche reicht der Speicher einer L4, die
     Roofline-Obergrenze bei 5 aktiven Anfragen liegt aber unter dem, was mit
-    50 % Effizienz für 25 Token/s pro Strom nötig wäre."""
+    50 % Effizienz für 40 Token/s pro Strom nötig wäre."""
     b = Bedarf(gespraeche=10)
     m = MODELLE["qwen3-8b"]
     verfuegbar = GPUS["L4"].speicher_gib * b.gpu_speicheranteil - b.reserve_gib_pro_karte
     assert (gewichte_byte(m, "int4") + 10 * 6000 * kv_byte_pro_token(m)) / GIB < verfuegbar
     assert not [o for o in dimensionieren("qwen3-8b", b) if o.gpu == "L4" and o.karten == 1]
-    # Das Urteil hängt an der Effizienz-Annahme: Schon die Gewichte allein begrenzen
-    # eine L4 auf 300 GB/s / 6.1 GB = rund 49 Token/s pro Strom. Mit gemessenen 70 %
-    # statt angenommenen 50 % und kürzerem Kontext reicht eine Karte.
+    # Das Urteil hängt an den Annahmen: Schon die Gewichte allein begrenzen eine L4
+    # auf 300 GB/s / 6.1 GB = rund 49 Token/s pro Strom. Mit 70 % statt 50 % Effizienz,
+    # kürzerem Kontext und 25 statt 40 Token/s reicht eine Karte.
     obergrenze_einzeln = GPUS["L4"].bandbreite_gb_s * 1e9 / gewichte_byte(m, "int4")
     assert 45 < obergrenze_einzeln < 50
-    gemessen = Bedarf(gespraeche=10, kontext_tokens=2000, kv_byte_pro_wert=1, effizienz=0.7)
-    assert [o for o in dimensionieren("qwen3-8b", gemessen) if o.gpu == "L4" and o.karten == 1]
+    guenstig = Bedarf(
+        gespraeche=10, kontext_tokens=2000, kv_byte_pro_wert=1, effizienz=0.7, min_tokens_s=25
+    )
+    assert [o for o in dimensionieren("qwen3-8b", guenstig) if o.gpu == "L4" and o.karten == 1]
+    streng = Bedarf(gespraeche=10, kontext_tokens=2000, kv_byte_pro_wert=1, effizienz=0.7)
+    assert not [o for o in dimensionieren("qwen3-8b", streng) if o.gpu == "L4" and o.karten == 1]
+
+
+def test_mindestrate_folgt_aus_dem_latenzbudget() -> None:
+    assert pytest.approx(40.0) == MIN_TOKENS_S
+    assert Bedarf().min_tokens_s == MIN_TOKENS_S
 
 
 def test_sortierung_und_preise() -> None:
@@ -144,3 +154,21 @@ def test_bericht_zeigt_rechenweg() -> None:
     assert "Annahmen" in text
     leer = bericht("qwen3-8b", b, [])
     assert "keine Konfiguration" in leer
+
+
+@pytest.mark.parametrize(
+    "feld",
+    [
+        {"effizienz": 0.0},
+        {"mfu": 1.5},
+        {"gpu_speicheranteil": 0.0},
+        {"duty_cycle": 0.0},
+        {"gespraeche": 0},
+        {"kontext_tokens": 0},
+        {"min_tokens_s": 0.0},
+        {"reserve_gib_pro_karte": -1.0},
+    ],
+)
+def test_bedarf_lehnt_unsinnige_annahmen_ab(feld: dict[str, float]) -> None:
+    with pytest.raises(ValueError):
+        Bedarf(**feld)  # type: ignore[arg-type]

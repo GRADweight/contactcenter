@@ -36,9 +36,12 @@ import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+from .telemetry import ZIELBUDGET_MS
+
 __all__ = [
     "GPU",
     "GPUS",
+    "MIN_TOKENS_S",
     "MODELLE",
     "PRAEZISIONEN",
     "Bedarf",
@@ -52,6 +55,9 @@ __all__ = [
 ]
 
 GIB = 2**30
+ERSTER_SATZ_TOKEN = 10  # Annahme: Länge eines kurzen ersten Satzes in Token
+# Nötige Dekodierrate, damit der erste Satz im Zielbudget «erster_satz» fertig ist.
+MIN_TOKENS_S = ERSTER_SATZ_TOKEN / (ZIELBUDGET_MS["erster_satz"] / 1000.0)
 
 
 @dataclass(frozen=True)
@@ -220,7 +226,7 @@ class Bedarf:
     kontext_tokens: int = 6000  # System-Prompt + Wissen + Verlauf pro Gespräch (Annahme)
     duty_cycle: float = 0.2  # Anteil der Gesprächszeit, in der das LLM rechnet (Annahme)
     neue_tokens_pro_wechsel: int = 300  # zu rechnende Tokens bei Prefix-Cache-Treffer (Annahme)
-    min_tokens_s: float = 25.0  # nötige Dekodierrate pro Strom (Annahme)
+    min_tokens_s: float = MIN_TOKENS_S  # 10 Token in 250 ms (erster Satz, Zielbudget)
     max_ttft_ms: float = 300.0  # Ziel erstes Token mit Prefix-Cache (Annahme)
     kv_byte_pro_wert: int = 2  # 2 = Standard, 1 = --kv-cache-dtype fp8
     # vLLM --gpu-memory-utilization; 0.92 ist der Standardwert in vLLM 0.32.0 (vllm/config/cache.py)
@@ -228,6 +234,16 @@ class Bedarf:
     reserve_gib_pro_karte: float = 1.5  # CUDA-Kontext, Aktivierungen, Graphen (Annahme)
     effizienz: float = 0.5  # erreichbarer Anteil der Roofline-Obergrenze (Annahme)
     mfu: float = 0.4  # Auslastung der Tensor-Rechenwerke beim Prefill (Annahme)
+
+    def __post_init__(self) -> None:
+        for name in ("effizienz", "mfu", "gpu_speicheranteil", "duty_cycle"):
+            wert = getattr(self, name)
+            if not 0.0 < wert <= 1.0:
+                raise ValueError(f"{name} muss in (0, 1] liegen, ist {wert}")
+        if self.gespraeche < 1 or self.kontext_tokens < 1 or self.neue_tokens_pro_wechsel < 1:
+            raise ValueError("gespraeche, kontext_tokens, neue_tokens_pro_wechsel: >= 1")
+        if self.min_tokens_s <= 0 or self.max_ttft_ms <= 0 or self.reserve_gib_pro_karte < 0:
+            raise ValueError("min_tokens_s und max_ttft_ms > 0, reserve_gib_pro_karte >= 0")
 
 
 @dataclass(frozen=True)
@@ -335,6 +351,9 @@ def bericht(modell: str, bedarf: Bedarf, optionen: list[Option], max_zeilen: int
         "Aktive LLM-Anfragen (99-%-Quantil, Duty Cycle "
         f"{100 * bedarf.duty_cycle:.0f} % angenommen): "
         f"{aktive_anfragen(bedarf.gespraeche, bedarf.duty_cycle)}",
+        f"Kriterien: Gewichte + KV-Cache passen, >= {bedarf.min_tokens_s:.0f} Tok/s pro Strom "
+        f"nach Effizienzannahme, TTFT mit Prefix-Cache <= {bedarf.max_ttft_ms:.0f} ms "
+        f"({bedarf.neue_tokens_pro_wechsel} neue Token).",
         "",
         "Karten GPU            Präz.  Gewichte  KV-Cache  verfügbar  Tok/s/Strom   TTFT ms",
         "                              GiB       GiB       GiB     max | Ann.  Cache | kalt",

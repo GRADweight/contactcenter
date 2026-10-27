@@ -53,6 +53,14 @@ def test_gpu_mit_eigenen_preisen(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert rc == 0 and "73'728 Byte/Token" in out
 
 
+def test_gpu_annahmen_aenderbar(capsys: pytest.CaptureFixture[str]) -> None:
+    basis = ["gpu", "--kontext", "2000", "--kv-fp8", "--effizienz", "0.7"]
+    _, standard = _lauf(basis, capsys)
+    _, guenstig = _lauf([*basis, "--min-tokens-s", "25"], capsys)
+    assert " 1 L4 " not in standard and " 1 L4 " in guenstig
+    assert "Effizienz 70 %" in guenstig and ">= 25 Tok/s" in guenstig
+
+
 def test_sim_und_vergleich(capsys: pytest.CaptureFixture[str]) -> None:
     rc, out = _lauf(["sim"], capsys)
     assert rc == 0 and "SIMULATION" in out
@@ -64,8 +72,8 @@ def test_sim_und_vergleich(capsys: pytest.CaptureFixture[str]) -> None:
 def test_server_und_latenz_werden_weitergereicht(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit):
         main(["server", "--hilfe-gibt-es-nicht"])
-    with pytest.raises(ValueError):
-        main(["latenz-messen"])
+    assert main(["latenz-messen"]) == 2
+    assert "mindestens einen Endpunkt" in capsys.readouterr().err
 
 
 def test_audit_pruefen(
@@ -90,3 +98,25 @@ def test_audit_pruefen(
     dev = tmp_path / "dev.jsonl"
     AuditLog(str(dev), unsigniert_erlaubt=True).schreiben("x")
     assert main(["audit-pruefen", "--unsigniert", str(dev)]) == 0
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["gpu", "--effizienz", "0"],
+        ["gpu", "--preise", "/nicht/vorhanden.json"],
+        ["kapazitaet", "--anrufe-pro-tag", "-5"],
+        ["kapazitaet", "--anrufe-pro-tag", "200", "--spitzenanteil", "1.5"],
+    ],
+)
+def test_eingabefehler_ergeben_rueckgabewert_2(
+    args: list[str], capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(args) == 2
+    assert capsys.readouterr().err.startswith("Fehler: ")
+
+
+def test_argparse_fehler_ergeben_rueckgabewert_2() -> None:
+    with pytest.raises(SystemExit) as e:
+        main(["gpu", "--modell", "gibt-es-nicht"])
+    assert e.value.code == 2

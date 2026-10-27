@@ -155,6 +155,10 @@ def _gpu(argv: Sequence[str]) -> int:
     p.add_argument("--kontext", type=int, default=6000)
     p.add_argument("--duty-cycle", type=float, default=0.2)
     p.add_argument("--kv-fp8", action="store_true", help="KV-Cache in FP8 (--kv-cache-dtype fp8)")
+    p.add_argument("--effizienz", type=float, default=Bedarf.effizienz, help="Anteil der Roofline")
+    p.add_argument("--min-tokens-s", type=float, default=Bedarf.min_tokens_s)
+    p.add_argument("--max-ttft-ms", type=float, default=Bedarf.max_ttft_ms)
+    p.add_argument("--speicheranteil", type=float, default=Bedarf.gpu_speicheranteil)
     p.add_argument("--preise", default="", help="JSON-Datei {GPU-Name: eigener Preis je Karte}")
     a = p.parse_args(list(argv))
     bedarf = Bedarf(
@@ -162,6 +166,10 @@ def _gpu(argv: Sequence[str]) -> int:
         kontext_tokens=a.kontext,
         duty_cycle=a.duty_cycle,
         kv_byte_pro_wert=1 if a.kv_fp8 else 2,
+        effizienz=a.effizienz,
+        min_tokens_s=a.min_tokens_s,
+        max_ttft_ms=a.max_ttft_ms,
+        gpu_speicheranteil=a.speicheranteil,
     )
     preise = None
     if a.preise:
@@ -177,7 +185,7 @@ def _sim(argv: Sequence[str]) -> int:
     argparse.ArgumentParser(
         prog="gw-contactcenter sim", description="Simulierter Anruf (Mock-Komponenten)"
     ).parse_args(list(argv))
-    print(bericht_text(anruf(DEMO)))
+    print(bericht_text(anruf(DEMO), ohne=anruf(DEMO, zwischenergebnisse=False)))
     return 0
 
 
@@ -231,15 +239,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(__version__)
         return 0
     befehl, rest = args[0], args[1:]
-    if befehl in befehle:
-        return befehle[befehl](rest)
-    if befehl == "latenz-messen":
-        from .latenzmessung import main as latenz_main
+    try:
+        if befehl in befehle:
+            return befehle[befehl](rest)
+        if befehl == "latenz-messen":
+            from .latenzmessung import main as latenz_main
 
-        return latenz_main(rest)
-    if befehl == "server":
-        from .server import main as server_main
+            return latenz_main(rest)
+        if befehl == "server":
+            from .server import main as server_main
 
-        return server_main(rest)
+            return server_main(rest)
+    except (ValueError, OSError) as e:
+        # Ungültige Eingaben (z. B. n <= A, Anteil ausserhalb (0, 1], fehlende Datei):
+        # Meldung statt Traceback, Rückgabewert 2 wie bei argparse-Fehlern.
+        print(f"Fehler: {e}", file=sys.stderr)
+        return 2
     print(f"unbekannter Befehl {befehl!r}\n{__doc__}", file=sys.stderr)
     return 2
