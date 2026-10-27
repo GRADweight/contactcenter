@@ -7,6 +7,7 @@ Befehle:
 ``gpu``            GPU-Dimensionierung aus Modellarchitektur und Datenblatt
 ``sim``            simulierter Anruf durch die ganze Pipeline (Simulation)
 ``latenz-messen``  Latenzmessung gegen echte Endpunkte
+``audit-pruefen``  Audit-Datei prüfen (Schlüssel aus AUDIT_HMAC_KEY)
 ``server``         Genesys-Audio-Connector-Server (Extra ``server``)
 """
 
@@ -14,24 +15,28 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from collections.abc import Sequence
 
 from . import __version__
+from .audit import AuditFehler, AuditKetteDefekt, AuditLog
 from .kapazitaet import Lastannahme, berechne, speicherbedarf
 from .sizing import MODELLE, Bedarf, bericht, dimensionieren
 from .warteschlange import angebot_erlang, erlang_a, kennzahlen
 from .warteschlange_sim import simuliere
 
 # Szenarien für ``vergleich`` (deterministisch dank fester Seeds).
-VERGLEICH_SZENARIEN: list[tuple[str, float, float, int, float | None]] = [
-    # (Bezeichnung, Anrufe/h, AHT s, Agenten, Geduld s oder None)
-    ("README-Beispiel", 50.0, 120.0, 3, None),
-    ("README-Beispiel", 50.0, 120.0, 4, None),
-    ("Call Centre Helper", 200.0, 180.0, 13, None),
-    ("Call Centre Helper", 200.0, 180.0, 14, None),
-    ("hohe Last", 360.0, 300.0, 33, None),
-    ("Erlang-A", 200.0, 180.0, 10, 60.0),
+VERGLEICH_SZENARIEN: list[tuple[str, float, float, int, float | None, float]] = [
+    # (Bezeichnung, Anrufe/h, AHT s, Agenten, Geduld s oder None, CV der Bearbeitungszeit)
+    ("README-Beispiel", 50.0, 120.0, 3, None, 1.0),
+    ("README-Beispiel", 50.0, 120.0, 4, None, 1.0),
+    ("Call Centre Helper", 200.0, 180.0, 13, None, 1.0),
+    ("Call Centre Helper", 200.0, 180.0, 14, None, 1.0),
+    ("hohe Last", 360.0, 300.0, 33, None, 1.0),
+    ("Erlang-A", 200.0, 180.0, 10, 60.0, 1.0),
+    # Gegenprobe zur Annahme: lognormale Gespräche (CV 0.5) gegen die Erlang-C-Formel
+    ("M/G/n CV 0.5", 200.0, 180.0, 13, None, 0.5),
 ]
 
 
@@ -53,10 +58,17 @@ def vergleich_text(anrufe: int = 200_000, sl_zeit_s: float = 20.0) -> str:
         f"{_tausender(anrufe)} Anrufe je Szenario, 20 Batches)",
         "Szenario             A Erl.   n  Kennzahl        Formel   Simulation  ± 1 SE",
     ]
-    for name, pro_h, aht, n, geduld in VERGLEICH_SZENARIEN:
+    for name, pro_h, aht, n, geduld, cv in VERGLEICH_SZENARIEN:
         a = angebot_erlang(pro_h, aht)
         s = simuliere(
-            pro_h / 3600.0, aht, n, anrufe=anrufe, seed=1, sl_zeit_s=sl_zeit_s, geduld_s=geduld
+            pro_h / 3600.0,
+            aht,
+            n,
+            anrufe=anrufe,
+            seed=1,
+            sl_zeit_s=sl_zeit_s,
+            geduld_s=geduld,
+            bearbeitung_cv=cv,
         )
         if geduld is None:
             k = kennzahlen(n, a, aht, sl_zeit_s)
@@ -179,6 +191,30 @@ def _vergleich(argv: Sequence[str]) -> int:
     return 0
 
 
+def _audit_pruefen(argv: Sequence[str]) -> int:
+    p = argparse.ArgumentParser(
+        prog="gw-contactcenter audit-pruefen",
+        description="Hash-Kette einer Audit-Datei prüfen; Schlüssel aus AUDIT_HMAC_KEY",
+    )
+    p.add_argument("datei")
+    p.add_argument("--unsigniert", action="store_true", help="Datei aus dem Entwicklungsmodus")
+    a = p.parse_args(list(argv))
+    if not os.path.isfile(a.datei):
+        print(f"Datei nicht gefunden: {a.datei}", file=sys.stderr)
+        return 2
+    schluessel = os.environ.get("AUDIT_HMAC_KEY", "").encode()
+    try:
+        log = AuditLog(a.datei, schluessel=schluessel or None, unsigniert_erlaubt=a.unsigniert)
+    except AuditKetteDefekt as e:
+        print(f"DEFEKT: Kette ab Eintrag {e.nummer} verletzt ({a.datei})")
+        return 1
+    except AuditFehler as e:
+        print(f"Fehler: {e}", file=sys.stderr)
+        return 2
+    print(f"intakt: {len(log.eintraege)} Einträge, letzter Prüfwert {log.letzter_pruefwert}")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     befehle = {
@@ -186,6 +222,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "vergleich": _vergleich,
         "gpu": _gpu,
         "sim": _sim,
+        "audit-pruefen": _audit_pruefen,
     }
     if not args or args[0] in ("-h", "--help"):
         print(__doc__)

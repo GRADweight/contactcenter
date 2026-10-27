@@ -223,7 +223,8 @@ class Bedarf:
     min_tokens_s: float = 25.0  # nötige Dekodierrate pro Strom (Annahme)
     max_ttft_ms: float = 300.0  # Ziel erstes Token mit Prefix-Cache (Annahme)
     kv_byte_pro_wert: int = 2  # 2 = Standard, 1 = --kv-cache-dtype fp8
-    gpu_speicheranteil: float = 0.9  # vLLM --gpu-memory-utilization (Standardwert)
+    # vLLM --gpu-memory-utilization; 0.92 ist der Standardwert in vLLM 0.32.0 (vllm/config/cache.py)
+    gpu_speicheranteil: float = 0.92
     reserve_gib_pro_karte: float = 1.5  # CUDA-Kontext, Aktivierungen, Graphen (Annahme)
     effizienz: float = 0.5  # erreichbarer Anteil der Roofline-Obergrenze (Annahme)
     mfu: float = 0.4  # Auslastung der Tensor-Rechenwerke beim Prefill (Annahme)
@@ -354,4 +355,4 @@ def bericht(modell: str, bedarf: Bedarf, optionen: list[Option], max_zeilen: int
         f"--gpu-memory-utilization {bedarf.gpu_speicheranteil}.",
         "Vor einer Beschaffung auf der Zielhardware messen (gw-contactcenter latenz-messen).",
     ]
-    return "\n".join(zeilen)
+    return "\n".join(z.rstrip() for z in zeilen)

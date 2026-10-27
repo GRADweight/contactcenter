@@ -66,3 +66,27 @@ def test_server_und_latenz_werden_weitergereicht(capsys: pytest.CaptureFixture[s
         main(["server", "--hilfe-gibt-es-nicht"])
     with pytest.raises(ValueError):
         main(["latenz-messen"])
+
+
+def test_audit_pruefen(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from gw_contactcenter.audit import AuditLog
+
+    pfad = tmp_path / "a.jsonl"
+    log = AuditLog(str(pfad), schluessel=b"k" * 32)
+    log.schreiben("start")
+    log.schreiben("ende")
+    monkeypatch.setenv("AUDIT_HMAC_KEY", "k" * 32)
+    rc, out = _lauf(["audit-pruefen", str(pfad)], capsys)
+    assert rc == 0 and out.startswith("intakt: 2 Einträge")
+    zeilen = pfad.read_text(encoding="utf-8").splitlines()
+    pfad.write_text(zeilen[0].replace("start", "manipuliert") + "\n" + zeilen[1] + "\n", "utf-8")
+    rc, out = _lauf(["audit-pruefen", str(pfad)], capsys)
+    assert rc == 1 and "ab Eintrag 1" in out
+    monkeypatch.delenv("AUDIT_HMAC_KEY")
+    assert main(["audit-pruefen", str(pfad)]) == 2, "ohne Schlüssel keine Prüfung"
+    assert main(["audit-pruefen", str(tmp_path / "fehlt.jsonl")]) == 2
+    dev = tmp_path / "dev.jsonl"
+    AuditLog(str(dev), unsigniert_erlaubt=True).schreiben("x")
+    assert main(["audit-pruefen", "--unsigniert", str(dev)]) == 0
