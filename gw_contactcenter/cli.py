@@ -250,6 +250,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             from .server import main as server_main
 
             return server_main(rest)
+    except BrokenPipeError:
+        # Ausgabe in eine Pipe, die früh geschlossen wurde (z. B. «| head»): still beenden.
+        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        return 1
     except (ValueError, OSError) as e:
         # Ungültige Eingaben (z. B. n <= A, Anteil ausserhalb (0, 1], fehlende Datei):
         # Meldung statt Traceback, Rückgabewert 2 wie bei argparse-Fehlern.

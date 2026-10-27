@@ -120,3 +120,22 @@ def test_argparse_fehler_ergeben_rueckgabewert_2() -> None:
     with pytest.raises(SystemExit) as e:
         main(["gpu", "--modell", "gibt-es-nicht"])
     assert e.value.code == 2
+
+
+def test_geschlossene_pipe_ohne_fehlermeldung() -> None:
+    """Wie «gw-contactcenter vergleich | head -0»: Der Leser schliesst die Pipe,
+    bevor die Ausgabe kommt (die Rechnung dauert länger als das Schliessen)."""
+    import subprocess
+    import sys
+
+    p = subprocess.Popen(
+        [sys.executable, "-m", "gw_contactcenter", "vergleich"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    assert p.stdout is not None and p.stderr is not None
+    p.stdout.close()
+    fehler = p.stderr.read()
+    assert p.wait(timeout=60) == 1
+    assert "Fehler" not in fehler and "Traceback" not in fehler
