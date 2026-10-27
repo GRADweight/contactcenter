@@ -1,91 +1,168 @@
 name: ci
 
-# CI-Gate für contactcenter: hartes Gate (grün/rot) über alle lauffähigen
-# Teile. Drei Schichten:
-#   1) Syntax/Import  - alle .py compilen (schnell)
-#   2) Verhalten       - Samples (selftest), voiceagent-Tests, simulierter Anruf
-#   3) Qualität        - Evals gegen Golden-Set mit harten Schwellen
-#
-# Keine GPU, keine API-Keys, kein externes Netz - alles deterministisch.
-# Einzige Installation: websockets (für den WebSocket-Servertest).
+# Prüft bei jedem Push und Pull Request: Lint und Typen, Tests unter drei
+# Python-Versionen mit Abdeckung, Eval-Gate, Beispiele, Paket in frischer
+# Umgebung, Container-Build und Sicherheit (Geheimnisse, Abhängigkeiten).
+# Alles offline gegen Mocks und lokale Fake-Server: keine GPU, keine Schlüssel.
 
 on:
   push:
-    branches: [main]
   pull_request:
 
-jobs:
-  syntax-and-behavior:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python: ["3.9", "3.12"]
-    steps:
-      - uses: actions/checkout@v4
+permissions:
+  contents: read
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - run: uv venv && uv pip install -e ".[dev]"
+      - name: ruff check
+        run: .venv/bin/ruff check .
+      - name: ruff format
+        run: .venv/bin/ruff format --check .
+      - name: mypy --strict
+        run: .venv/bin/mypy
+
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ matrix.python }}
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - run: uv venv -p ${{ matrix.python }} && uv pip install -e ".[dev]"
+      - name: pytest mit Abdeckung (Schwelle in pyproject.toml)
+        run: .venv/bin/python -m pytest --cov --cov-report=term
 
-      - name: 1) Alle .py compilen (Syntax + Import-Fehler)
+  evals:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - run: uv venv && uv pip install .
+      - name: Golden-Set mit Gate
+        run: .venv/bin/python evals/run_evals.py --json eval-bericht.json
+
+  beispiele:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - run: uv venv && uv pip install .
+      - name: Selbsttests der Beispiele
         run: |
-          python -m py_compile \
-            beispiele/transkript_pipeline.py \
-            beispiele/skalierungsrechner.py \
-            beispiele/handoff_router.py \
-            beispiele/qualitaetstest.py
-          python -m compileall -q voiceagent evals tests
-          echo "  Alle Python-Dateien compilen"
-
-      - name: 2) Selftests (kein Netz, kein API-Key)
+          for b in beispiele/*.py; do .venv/bin/python "$b" selftest; done
+      - name: Kommandozeile
         run: |
-          echo "  - transkript_pipeline selftest -"
-          python beispiele/transkript_pipeline.py selftest
-          echo "  - skalierungsrechner selftest -"
-          python beispiele/skalierungsrechner.py selftest
-          echo "  - handoff_router selftest -"
-          python beispiele/handoff_router.py selftest
+          .venv/bin/gw-contactcenter kapazitaet --anrufe-pro-tag 200
+          .venv/bin/gw-contactcenter gpu --modell qwen3-8b --gespraeche 10
+          .venv/bin/gw-contactcenter vergleich
+          .venv/bin/gw-contactcenter sim
 
-      - name: '3) Qualitäts-Suite Q1-Q4 (Routing/Absicht/Skalierung/Sicherheit)'
+  paket:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - name: Wheel und sdist bauen
+        run: uv build
+      - name: In frischer Umgebung installieren und prüfen
         run: |
-          python beispiele/qualitaetstest.py
-          # exit-Code 1 bei rotem Test bricht das Gate
+          python -m venv /tmp/frisch
+          /tmp/frisch/bin/pip install dist/*.whl
+          cd /tmp
+          /tmp/frisch/bin/python -c "import gw_contactcenter, importlib.resources as r; assert r.files('gw_contactcenter').joinpath('py.typed').is_file(); print(gw_contactcenter.__version__)"
+          /tmp/frisch/bin/gw-contactcenter --version
+          /tmp/frisch/bin/gw-contactcenter kapazitaet --anrufe-pro-tag 200 | grep -q "Ergebnis: 4 Agenten"
+          /tmp/frisch/bin/python -m gw_contactcenter sim | grep -q "SIMULATION"
+          if /tmp/frisch/bin/gw-contactcenter server 2>/tmp/fehler.txt; then exit 1; fi
+          grep -q "verweigert" /tmp/fehler.txt
 
-      - name: '4) Skalierungsrechner Demo-Szenario 200 Tag 10 zugleich'
+  container:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Compose-Datei prüfen (mit Platzhaltern für Pflichtwerte)
+        env:
+          DOMAIN: voice.example.ch
+          AUDIOHOOK_API_KEY: platzhalter
+          AUDIOHOOK_CLIENT_SECRET: cGxhdHpoYWx0ZXI=
+          AUDIT_HMAC_KEY: platzhalter-platzhalter-platzhalter-32
+          LLM_MODELL: Qwen/Qwen3-8B-AWQ
+          ASR_MODELL: Systran/faster-whisper-large-v3
+          TTS_MODELL: piper-de
+          TTS_STIMME: de
+          GRAFANA_ADMIN_PASSWORD: platzhalter
+        run: docker compose -f deploy/compose.yaml config --quiet
+      - name: Images bauen
         run: |
-          python beispiele/skalierungsrechner.py rechner 200 10
-          echo '  Günstigste passende Karte (L4), keine überdimensionierte A100:'
-          python beispiele/skalierungsrechner.py rechner 200 10 | grep -q "1x L4-24"
-
-      - name: '5) voiceagent - Unit-, Integrations- und End-to-End-Tests'
+          docker build -f deploy/Dockerfile -t gw-contactcenter:ci .
+          docker build -f deploy/Caddy.Dockerfile -t gw-caddy:ci deploy
+      - name: Container läuft nicht als root und verweigert unsicheren Start
         run: |
-          pip install "websockets>=13"
-          python -m unittest discover -s tests -v
+          test "$(docker run --rm gw-contactcenter:ci id -u)" = "10001"
+          docker run --rm gw-contactcenter:ci gw-contactcenter --version
+          if docker run --rm gw-contactcenter:ci; then exit 1; fi
 
-      - name: '6) Evals - Golden-Set mit Gate (Sicherheit 100 %, Übergabe >= 95 %, Latenz)'
-        run: python evals/run_evals.py --json eval-bericht.json
-
-      - name: '7) Simulierter Anruf und GPU-Dimensionierung'
+  security:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: gitleaks (Binary mit Prüfsumme)
         run: |
-          python -m voiceagent.sim
-          python -m voiceagent.sizing qwen3-8b 10
-
-      - name: '8) Doku-Linkcheck (keine toten Links in den Dossiers)'
+          curl -sSfL -o gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          ./gitleaks git --redact --no-banner .
+          ./gitleaks dir --redact --no-banner .
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - name: pip-audit gegen die installierten Abhängigkeiten
         run: |
-          python - <<'PY'
-          import os, re, glob
-          missing = []
-          for doc in glob.glob('docs/*.md'):
-              s = open(doc, encoding='utf-8').read()
-              for link in re.findall(r'\]\(([^)]+)\)', s):
-                  target = link.split('#')[0]
-                  if not target or target.startswith('http'):
-                      continue
-                  full = os.path.join(os.path.dirname(doc), target)
-                  if not os.path.exists(full):
-                      missing.append((doc, link))
-          print('  geprüfte Dossiers:', len(glob.glob('docs/*.md')))
-          assert not missing, f'tote Links: {missing}'
-          print('  keine toten Doku-Links')
-          PY
+          uv venv -p 3.13 .audit
+          uv pip install -p .audit ".[server,dev]"
+          uvx pip-audit --path .audit/lib/python3.13/site-packages
