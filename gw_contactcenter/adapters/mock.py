@@ -139,17 +139,28 @@ class RegelLLM:
 
 
 class MockASR:
-    """Liefert vorgegebene Texte der Reihe nach (eine Äusserung = ein Text)."""
+    """Liefert vorgegebene Texte der Reihe nach (eine Äusserung = ein Text).
+
+    ``zwischenergebnisse=True`` spielt eine Streaming-ASR: ``teiltext()``
+    liefert die bisher gesprochenen Wörter. ``False`` entspricht dem
+    HTTP-Adapter im Server (keine Zwischenergebnisse).
+    """
 
     def __init__(
-        self, texte: list[str], uhr: _Uhr | None = None, latenz_ms: float = MOCK_LATENZ_MS["asr"]
+        self,
+        texte: list[str],
+        uhr: _Uhr | None = None,
+        latenz_ms: float = MOCK_LATENZ_MS["asr"],
+        *,
+        zwischenergebnisse: bool = True,
     ) -> None:
         self.texte, self.uhr, self.latenz_ms = list(texte), uhr, latenz_ms
+        self.zwischenergebnisse = zwischenergebnisse
         self.index = 0
         self.sichtbar: int | None = None  # Simulator: bisher gesprochene Wörter
 
     def teiltext(self) -> str:
-        if self.index >= len(self.texte):
+        if not self.zwischenergebnisse or self.index >= len(self.texte):
             return ""
         t = self.texte[self.index]
         return t if self.sichtbar is None else " ".join(t.split()[: self.sichtbar])

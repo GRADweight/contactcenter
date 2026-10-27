@@ -33,7 +33,7 @@ from .telemetry import Messung, SimUhr
 from .tools import DemoBackend, standard_werkzeuge
 
 HERKUNFT = {
-    "endpointing": "algorithmisch (Turn-Taking auf synthetischem Audio)",
+    "endpointing": "algorithmisch, Mock-ASR mit Zwischenergebnissen",
     "asr": f"Mock, fest {MOCK_LATENZ_MS['asr']:.0f} ms",
     "llm_ttft": f"Mock, fest {MOCK_LATENZ_MS['llm_ttft']:.0f} ms",
     "erster_satz": f"Mock, {MOCK_LATENZ_MS['llm_pro_token']:.0f} ms pro Token",
@@ -81,6 +81,8 @@ def baue_pipeline(
     uhr: SimUhr,
     backends: list[Backend] | None = None,
     audit: AuditLog | None = None,
+    *,
+    zwischenergebnisse: bool = True,
 ) -> tuple[Pipeline, DemoBackend, AuditLog]:
     audit = audit or AuditLog(unsigniert_erlaubt=True, uhr=lambda: uhr() / 1000.0)
     if backends is None:
@@ -92,7 +94,7 @@ def baue_pipeline(
     backend = DemoBackend()
     dialog = Dialog(gw, standard_werkzeuge(backend, audit), audit, anruf_id="sim-1")
     pipe = Pipeline(
-        asr=MockASR(texte, uhr),
+        asr=MockASR(texte, uhr, zwischenergebnisse=zwischenergebnisse),
         tts=MockTTS(uhr),
         dialog=dialog,
         gateway=gw,
@@ -130,9 +132,16 @@ def anruf(
     backends: list[Backend] | None = None,
     mit_audiohook: bool = True,
     max_ms: int = 120_000,
+    *,
+    zwischenergebnisse: bool = True,
 ) -> Bericht:
+    """Spielt ``zuege`` ab. ``zwischenergebnisse=False`` simuliert eine ASR ohne
+    Zwischenergebnisse wie den HTTP-Adapter im Server: Das Endpointing kennt den
+    Text dann nicht und wartet länger."""
     uhr = SimUhr()
-    pipe, _backend, audit = baue_pipeline([z.text for z in zuege], uhr, backends)
+    pipe, _backend, audit = baue_pipeline(
+        [z.text for z in zuege], uhr, backends, zwischenergebnisse=zwischenergebnisse
+    )
     asr = pipe.asr
     if not isinstance(asr, MockASR):  # pragma: no cover - baue_pipeline setzt immer MockASR
         raise TypeError("Simulator braucht MockASR")
@@ -232,7 +241,8 @@ DEMO = [
 ]
 
 
-def bericht_text(b: Bericht) -> str:
+def bericht_text(b: Bericht, ohne: Bericht | None = None) -> str:
+    """Textbericht; ``ohne`` ist derselbe Anruf ohne Zwischenergebnisse der ASR."""
     z = ["Simulierter Anruf (SIMULATION, keine Messung)"]
     z += [f"  Bot {i}: {a}" for i, a in enumerate(b.antworten, 1)]
     z.append(f"  Werkzeuge: {b.werkzeug_aufrufe}")
@@ -245,5 +255,16 @@ def bericht_text(b: Bericht) -> str:
             f"    {k:20} p50 {v['p50']:>6.0f}  p95 {v['p95']:>6.0f}  Ziel {v['ziel_p50']:>5.0f}  "
             f"{HERKUNFT.get(k, '')}"
         )
+    if ohne is not None:
+        z.append(
+            "  Derselbe Anruf ohne Zwischenergebnisse der ASR (wie der HTTP-Adapter im Server):"
+        )
+        for k in ("endpointing", "zeit_bis_erster_ton"):
+            if k in ohne.budget:
+                v = ohne.budget[k]
+                z.append(
+                    f"    {k:20} p50 {v['p50']:>6.0f}  p95 {v['p95']:>6.0f}  "
+                    f"Ziel {v['ziel_p50']:>5.0f}"
+                )
     z.append("  Echte Werte nur mit Messung auf Zielhardware: gw-contactcenter latenz-messen")
     return "\n".join(z)

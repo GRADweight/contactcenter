@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from gw_contactcenter import audio
-from gw_contactcenter.adapters.mock import MOCK_LATENZ_MS, RegelLLM
+from gw_contactcenter.adapters.mock import MOCK_LATENZ_MS, MockASR, RegelLLM
 from gw_contactcenter.gateway import Backend
 from gw_contactcenter.pipeline import NOTFALL_TEXT, Wiedergabe
 from gw_contactcenter.sim import DEMO, HERKUNFT, Zug, anruf, baue_pipeline, bericht_text
 from gw_contactcenter.telemetry import SimUhr
+from gw_contactcenter.turn import TurnConfig
 
 
 def test_demo_anruf() -> None:
@@ -36,6 +37,23 @@ def test_simulierte_latenz_ist_summe_der_mock_annahmen_plus_endpointing() -> Non
     text = bericht_text(b)
     assert "SIMULATION" in text and "keine Messung" in text
     assert HERKUNFT["endpointing"] in text
+
+
+def test_ohne_zwischenergebnisse_wartet_das_endpointing_laenger() -> None:
+    """Der HTTP-Adapter liefert keine Zwischenergebnisse. Das Endpointing kennt
+    den Text dann nicht und wartet die mittlere Stille aus TurnConfig ab."""
+    cfg = TurnConfig()
+    mittel = (cfg.warte_fertig_ms + cfg.warte_unfertig_ms) / 2
+    mit = anruf(DEMO)
+    ohne = anruf(DEMO, zwischenergebnisse=False)
+    assert mit.antworten == ohne.antworten
+    ep_mit = mit.budget["endpointing"]["p50"]
+    ep_ohne = ohne.budget["endpointing"]["p50"]
+    assert ep_mit < mittel <= ep_ohne < mittel + 100
+    assert not ohne.budget["zeit_bis_erster_ton"]["ok"], "ohne Partials über dem Budget"
+    text = bericht_text(mit, ohne=ohne)
+    assert "ohne Zwischenergebnisse" in text
+    assert MockASR(["Hallo Welt"], zwischenergebnisse=False).teiltext() == ""
 
 
 def test_denkpause_beim_diktieren_schneidet_nicht_ab() -> None:

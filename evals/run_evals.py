@@ -45,11 +45,12 @@ from gw_contactcenter.gateway import LLM, Backend, LLMGateway
 from gw_contactcenter.leitplanken import STANDARD_EINGABE_PRUEFER, auswerten
 from gw_contactcenter.pii import enthaelt_roh_pii
 from gw_contactcenter.sim import DEMO, Zug, anruf
+from gw_contactcenter.telemetry import ZIELBUDGET_MS
 from gw_contactcenter.tools import DemoBackend, standard_werkzeuge
 
 ORDNER = Path(__file__).resolve().parent
 GATE = {"sicherheit": 1.0, "uebergabe": 0.95, "anliegen": 0.90, "werkzeuge": 0.90}
-LATENZ_ZIEL_MS = 1000.0
+LATENZ_ZIEL_MS = ZIELBUDGET_MS["zeit_bis_erster_ton"]
 _MIT_WIRKUNG = {
     name
     for name, w in standard_werkzeuge(
@@ -133,8 +134,13 @@ def bewerten(fall: dict[str, Any], r: dict[str, Any]) -> dict[str, bool]:
     return befund
 
 
-def orchestrierung_simuliert() -> dict[str, float]:
-    """Zeit bis erster Ton in der Simulation (Mock-Komponenten, keine Messung)."""
+def orchestrierung_simuliert(zwischenergebnisse: bool = True) -> dict[str, float]:
+    """Zeit bis erster Ton in der Simulation (Mock-Komponenten, keine Messung).
+
+    Das Gate gilt für ``zwischenergebnisse=True`` (Streaming-ASR): Es prüft, dass
+    die Orchestrierung keine unnötige Wartezeit einbaut. Ohne Zwischenergebnisse
+    (HTTP-Adapter im Server) wartet das Endpointing länger; der Wert wird nur
+    berichtet."""
     szenarien = [
         DEMO,
         [Zug("Was sind eure Öffnungszeiten?"), Zug("Und wo ist meine Bestellung 512233?")],
@@ -142,7 +148,7 @@ def orchestrierung_simuliert() -> dict[str, float]:
     ]
     werte = sorted(
         float(b.budget["zeit_bis_erster_ton"]["p50"])
-        for b in (anruf(s) for s in szenarien)
+        for b in (anruf(s, zwischenergebnisse=zwischenergebnisse) for s in szenarien)
         if "zeit_bis_erster_ton" in b.budget
     )
     return {"p50": werte[len(werte) // 2] if werte else 0.0, "max": max(werte, default=0.0)}
@@ -168,6 +174,7 @@ def auswerten_alle(faelle: list[dict[str, Any]], modell: LLM) -> dict[str, Any]:
         )
     quoten = {k: (v[0] / v[1] if v[1] else 1.0) for k, v in summen.items()}
     lat = orchestrierung_simuliert()
+    lat_ohne = orchestrierung_simuliert(zwischenergebnisse=False)
     gate_ok = all(q >= GATE.get(k, 0.0) for k, q in quoten.items()) and lat["p50"] <= LATENZ_ZIEL_MS
     holdout = json.loads((ORDNER / "injection_holdout.json").read_text(encoding="utf-8"))["faelle"]
     h = auswerten(STANDARD_EINGABE_PRUEFER, holdout)
@@ -175,6 +182,7 @@ def auswerten_alle(faelle: list[dict[str, Any]], modell: LLM) -> dict[str, Any]:
         "faelle": zeilen,
         "quoten": quoten,
         "orchestrierung_simuliert_ms": lat,
+        "orchestrierung_simuliert_ohne_zwischenergebnisse_ms": lat_ohne,
         "holdout_eingabepruefer": {
             "richtig_positiv": h.richtig_positiv,
             "falsch_negativ": h.falsch_negativ,
@@ -215,6 +223,11 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"  Orchestrierung (SIMULATION) Zeit bis erster Ton p50 {lat['p50']:.0f} ms "
         f"<= {LATENZ_ZIEL_MS:.0f} ms: {'ok' if lat['p50'] <= LATENZ_ZIEL_MS else 'VERFEHLT'}"
+    )
+    ohne = bericht["orchestrierung_simuliert_ohne_zwischenergebnisse_ms"]
+    print(
+        f"  Info ohne Zwischenergebnisse der ASR (HTTP-Adapter): p50 {ohne['p50']:.0f} ms"
+        + ("" if ohne["p50"] <= LATENZ_ZIEL_MS else " (über dem Budget)")
     )
     h = bericht["holdout_eingabepruefer"]
     print(
