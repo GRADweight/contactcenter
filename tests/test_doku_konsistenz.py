@@ -288,7 +288,8 @@ _TEXTENDUNGEN = {".md", ".py", ".toml", ".yml", ".yaml", ".json", ".txt", ".cfg"
 _TEXTNAMEN = {"Dockerfile", "Caddyfile", "Caddy.Dockerfile", "LICENSE", ".gitignore"}
 _AUSGENOMMEN = {".git", ".venv", "build", "dist", "__pycache__", ".mypy_cache", ".ruff_cache"}
 # Pfade im Container, keine lokalen Pfade eines Rechners
-_CONTAINER_PFADE = {"deploy/compose.yaml": ("/home/vllm", "/home/ubuntu")}
+_CONTAINER = ("/home/vllm", "/home/ubuntu")
+_CONTAINER_PFADE = {"deploy/compose.yaml": _CONTAINER, "tests/test_doku_konsistenz.py": _CONTAINER}
 
 
 def _repo_dateien() -> list[Path]:
@@ -303,11 +304,10 @@ def _repo_dateien() -> list[Path]:
 
 
 def test_keine_lokalen_pfade() -> None:
-    muster = re.compile(r"/Users/|/home/[\w.-]+|~/")
+    # Zeichenklassen, damit das Muster nicht sich selbst trifft
+    muster = re.compile(r"/[U]sers/|/home/[\w.-]+|~[/]")
     for p in _repo_dateien():
         rel = p.relative_to(WURZEL).as_posix()
-        if rel == "tests/test_doku_konsistenz.py":
-            continue
         for treffer in muster.findall(p.read_text(encoding="utf-8")):
             erlaubt = _CONTAINER_PFADE.get(rel, ())
             assert treffer in erlaubt, f"{rel}: lokaler Pfad {treffer!r}"
