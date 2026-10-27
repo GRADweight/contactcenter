@@ -19,6 +19,7 @@ from websockets.asyncio.client import connect
 from websockets.exceptions import InvalidStatus
 
 from gw_contactcenter import audio, server
+from gw_contactcenter.audit import AuditLog
 from gw_contactcenter.server import (
     KonfigurationsFehler,
     ServerKonfig,
@@ -113,6 +114,17 @@ def test_entwicklung_erlaubt_mocks() -> None:
     k2 = konfig_aus([], _prod_env(TTS_FORMAT="pcm", TTS_ABTASTRATE="8000"))
     _, _, tts2 = server.adapter_bauen(k2)
     assert type(tts2).__name__ == "HTTPTTS"
+
+
+def test_breaker_und_tageskosten_gelten_prozessweit() -> None:
+    k = konfig_aus(["--modus", "entwicklung"], {"AUDIOHOOK_API_KEY": "x"})
+    g = server.Geteilt.aus(k)
+    assert [(b.name, b.region) for b in g.backends] == [("lokal-vllm", "lokal")]
+    audit = AuditLog(unsigniert_erlaubt=True)
+    erster = server.LLMGateway(g.backends, audit, kosten=g.kosten)
+    zweiter = server.LLMGateway(g.backends, audit, kosten=g.kosten)
+    assert erster.backends[0].breaker is zweiter.backends[0].breaker
+    assert erster.kosten is zweiter.kosten
 
 
 def _header_klein() -> dict[str, str]:

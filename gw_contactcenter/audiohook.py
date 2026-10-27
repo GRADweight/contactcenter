@@ -147,7 +147,8 @@ class AudioHookSitzung:
             "parameters": parameters or {},
         }
 
-    def _client_fehler(self, info: str) -> list[Nachricht]:
+    def client_fehler(self, info: str) -> list[Nachricht]:
+        """Protokollverstoss des Clients: ``disconnect`` mit Grund ``error``."""
         self.protokoll.append(f"Client-Fehler: {info}")
         if self.beendet:
             return []
@@ -192,13 +193,13 @@ class AudioHookSitzung:
         if self.zustand == "fehler":
             return []
         if len(roh.encode()) > MAX_TEXT_BYTE:
-            return self._client_fehler("Textnachricht grösser als 64 KiB")
+            return self.client_fehler("Textnachricht grösser als 64 KiB")
         try:
             m = json.loads(roh)
         except json.JSONDecodeError:
-            return self._client_fehler("Textnachricht ist kein gültiges JSON")
+            return self.client_fehler("Textnachricht ist kein gültiges JSON")
         if not isinstance(m, dict):
-            return self._client_fehler("Nachricht ist kein JSON-Objekt")
+            return self.client_fehler("Nachricht ist kein JSON-Objekt")
         typ, seq, serverseq = m.get("type"), m.get("seq"), m.get("serverseq")
         if (
             m.get("version") != PROTOKOLL_VERSION
@@ -211,21 +212,21 @@ class AudioHookSitzung:
             or _parse_position(m.get("position")) is None
             or not isinstance(m.get("parameters"), dict)
         ):
-            return self._client_fehler("keine wohlgeformte Client-Nachricht")
+            return self.client_fehler("keine wohlgeformte Client-Nachricht")
         if seq != self.client_seq + 1:
-            return self._client_fehler(f"seq {seq} folgt nicht auf {self.client_seq}")
+            return self.client_fehler(f"seq {seq} folgt nicht auf {self.client_seq}")
         self.client_seq = seq
         if serverseq > self.seq:
-            return self._client_fehler("serverseq grösser als gesendete seq")
+            return self.client_fehler("serverseq grösser als gesendete seq")
         if self.id and m["id"] != self.id:
-            return self._client_fehler("Sitzungs-ID hat gewechselt")
+            return self.client_fehler("Sitzungs-ID hat gewechselt")
         if not self.id:
             self.id = m["id"]
         self.position_s = _parse_position(m["position"]) or self.position_s
         if typ not in _CLIENT_TYPEN:
-            return self._client_fehler(f"{typ!r} ist keine unterstützte Client-Nachricht")
+            return self.client_fehler(f"{typ!r} ist keine unterstützte Client-Nachricht")
         if typ != "open" and self.zustand == "neu":
-            return self._client_fehler(f"{typ!r} vor 'open'")
+            return self.client_fehler(f"{typ!r} vor 'open'")
         handler = getattr(self, f"_on_{typ}")
         antwort: list[Nachricht] = handler(m["parameters"])
         return antwort
@@ -240,7 +241,7 @@ class AudioHookSitzung:
         media = p.get("media")
         wahl = self._medien_waehlen(media if isinstance(media, list) else [])
         if wahl is None:
-            return self._client_fehler("kein unterstütztes Medienformat angeboten (PCMU 8000)")
+            return self.client_fehler("kein unterstütztes Medienformat angeboten (PCMU 8000)")
         self.kanaele = list(wahl["channels"])
         gewuenscht = p.get("language", "")
         self.sprache = gewuenscht if gewuenscht in self.sprachen else self.sprachen[0]

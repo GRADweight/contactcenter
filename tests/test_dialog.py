@@ -192,7 +192,7 @@ def test_ungueltiges_modell_json_faellt_auf_regeln_zurueck() -> None:
 
 def test_tageslimit_und_ausfall_bei_klassifikation() -> None:
     d, _, _ = baue_dialog()
-    d.gateway.kosten_heute = d.gateway.tageslimit
+    d.gateway.kosten.buchen(d.gateway.tageslimit)
     assert d.wechsel("Ich will meinen Vertrag kündigen").aktion == "sofort_uebergeben"
     d2, _, _ = baue_dialog([Backend("lokal", "lokal", RegelLLM(fehler=True))])
     assert d2.wechsel("Ich will meinen Vertrag kündigen").aktion == "sofort_uebergeben"

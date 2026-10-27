@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from datetime import date
 
 import pytest
 
@@ -14,6 +15,7 @@ from gw_contactcenter.gateway import (
     BudgetErschoepft,
     CircuitBreaker,
     KeinBackend,
+    Kostenzaehler,
     LLMErgebnis,
     LLMGateway,
     Nachricht,
@@ -175,3 +177,27 @@ def test_budget_und_tageslimit() -> None:
     assert teuer.kosten_heute > 1.0
     with pytest.raises(BudgetErschoepft):
         teuer.anfrage(MSG, klasse=2, anruf_id="z")
+
+
+def test_kostenzaehler_beginnt_jeden_tag_neu() -> None:
+    tag = [date(2026, 10, 27)]
+    z = Kostenzaehler(limit=1.0, tag=lambda: tag[0])
+    z.buchen(1.0)
+    assert z.erschoepft()
+    tag[0] = date(2026, 10, 28)
+    assert z.heute == 0.0 and not z.erschoepft()
+    with pytest.raises(ValueError):
+        z.buchen(-1.0)
+    with pytest.raises(ValueError):
+        Kostenzaehler(limit=-1.0)
+
+
+def test_geteilter_kostenzaehler_gilt_ueber_alle_gateways(audit: AuditLog) -> None:
+    z = Kostenzaehler(limit=1.0)
+    b = Backend("t", "lokal", RegelLLM(), preis_pro_1k_token=1000.0)
+    erster = LLMGateway([b], audit, kosten=z)
+    zweiter = LLMGateway([b], audit, kosten=z)
+    erster.anfrage(MSG, klasse=0, anruf_id="a")
+    assert zweiter.kosten_heute == erster.kosten_heute > 1.0
+    with pytest.raises(BudgetErschoepft):
+        zweiter.anfrage(MSG, klasse=0, anruf_id="b")

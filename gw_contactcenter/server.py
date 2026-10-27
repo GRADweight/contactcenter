@@ -45,7 +45,7 @@ from .audio import FRAME_MS, TELEFON_RATE, frame_bytes
 from .audiohook import AudioHookSitzung, pruefe_header
 from .audit import MIN_SCHLUESSEL_BYTE, AuditLog
 from .dialog import Dialog
-from .gateway import LLM, Backend, LLMGateway
+from .gateway import LLM, Backend, Kostenzaehler, LLMGateway
 from .pipeline import ASR, TTS, Pipeline
 from .policy import REGIONEN
 from .signatur import NonceSpeicher, pruefe_signatur
@@ -222,6 +222,22 @@ def adapter_bauen(k: ServerKonfig) -> tuple[LLM, ASR, TTS]:
     return llm, asr, tts
 
 
+@dataclass
+class Geteilt:
+    """Was alle Anrufe eines Prozesses teilen: die Backends samt Circuit
+    Breaker (ein ausgefallenes Modell wird für alle Anrufe übersprungen) und
+    den Tageskostenzähler. Gateway, Audit, Dialog, ASR und TTS entstehen pro
+    Anruf neu."""
+
+    backends: list[Backend]
+    kosten: Kostenzaehler
+
+    @classmethod
+    def aus(cls, k: ServerKonfig) -> Geteilt:
+        llm, _, _ = adapter_bauen(k)
+        return cls([Backend(k.llm_name, k.llm_region, llm)], Kostenzaehler())
+
+
 def _sichere_id(roh: str) -> str:
     """Header-Wert als Dateiname: nur [A-Za-z0-9_-], höchstens 64 Zeichen."""
     return re.sub(r"[^A-Za-z0-9_-]", "_", roh)[:64] or "unbekannt"
@@ -252,7 +268,7 @@ def zugang_pruefen(
     return None if ergebnis.ok else f"Signatur: {ergebnis.code} {ergebnis.grund}"
 
 
-async def sitzung(ws: Any, k: ServerKonfig) -> None:
+async def sitzung(ws: Any, k: ServerKonfig, geteilt: Geteilt | None = None) -> None:
     """Ein Anruf. Drei Aufgaben laufen nebeneinander:
 
     * Empfang: Steuernachrichten sofort beantworten, Audio in eine
@@ -269,13 +285,14 @@ async def sitzung(ws: Any, k: ServerKonfig) -> None:
     aufgaben: list[asyncio.Task[None]] = []
     try:
         ah = AudioHookSitzung("connector")
-        llm, asr, tts = adapter_bauen(k)
+        g = geteilt if geteilt is not None else Geteilt.aus(k)
+        _, asr, tts = adapter_bauen(k)
         audit = AuditLog(
             os.path.join(k.audit_dir, f"{sid}.jsonl") if k.audit_dir else None,
             schluessel=k.audit_schluessel or None,
             unsigniert_erlaubt=k.entwicklung,
         )
-        gw = LLMGateway([Backend(k.llm_name, k.llm_region, llm)], audit=audit)
+        gw = LLMGateway(g.backends, audit=audit, kosten=g.kosten)
         dialog = Dialog(gw, standard_werkzeuge(DemoBackend(), audit), audit, anruf_id=sid)
         loop = asyncio.get_running_loop()
         ton_raus: deque[bytes] = deque()  # 20-ms-Frames, nur im Event-Loop angefasst
@@ -361,7 +378,7 @@ async def sitzung(ws: Any, k: ServerKonfig) -> None:
             try:
                 kanaele = ah.audio_empfangen(nachricht)
             except ValueError as e:
-                for antwort in ah._client_fehler(str(e)):
+                for antwort in ah.client_fehler(str(e)):
                     await ws.send(json.dumps(antwort))
                 break
             if kanaele is not None:
@@ -411,6 +428,7 @@ async def bedienen(k: ServerKonfig, bereit: asyncio.Event | None = None) -> None
     from websockets.asyncio.server import serve
 
     nonces = NonceSpeicher()
+    geteilt = Geteilt.aus(k)
 
     async def zugang(verbindung: ServerConnection, request: Request) -> Response | None:
         if k.max_sitzungen and AKTIV["sitzungen"] >= k.max_sitzungen:
@@ -423,7 +441,7 @@ async def bedienen(k: ServerKonfig, bereit: asyncio.Event | None = None) -> None
         return verbindung.respond(401, "unauthorized\n")
 
     async def handler(ws: Any) -> None:
-        await sitzung(ws, k)
+        await sitzung(ws, k, geteilt)
 
     async with serve(handler, k.host, k.port, process_request=zugang, max_size=2**20) as srv:
         k.port = srv.sockets[0].getsockname()[1] if srv.sockets else k.port

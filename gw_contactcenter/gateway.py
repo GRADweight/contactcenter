@@ -12,8 +12,10 @@ Modell. Dadurch gelten die folgenden Regeln an genau einer Stelle:
 3. **Satz-Streaming**: Die Sprachausgabe beginnt mit dem ersten geprüften
    Satz, während das Modell weiterschreibt.
 4. **Ausfallsicherheit und Kosten**: Fallback-Kette, Circuit Breaker,
-   Token-Budget pro Anruf und Tageslimit (in der Währung der
-   ``preis_pro_1k_token``-Angaben, die der Betreiber setzt).
+   Token-Budget pro Anruf und Tageslimit pro Kalendertag (in der Währung der
+   ``preis_pro_1k_token``-Angaben, die der Betreiber setzt). Backends mit
+   ihrem Breaker und der :class:`Kostenzaehler` können von mehreren
+   Gateways (einem pro Anruf) geteilt werden; beide sind threadsicher.
 
 Ein Modell ist ein Adapter mit ``complete(...)`` und optional ``stream(...)``
 (:class:`LLM`). Mock und OpenAI-kompatible Server sind austauschbar.
@@ -22,9 +24,11 @@ Ein Modell ist ein Adapter mit ``complete(...)`` und optional ``stream(...)``
 from __future__ import annotations
 
 import re
+import threading
 import time
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Protocol, TypedDict
 
 from .audit import AuditLog
@@ -39,6 +43,7 @@ __all__ = [
     "CircuitBreaker",
     "GatewayAntwort",
     "KeinBackend",
+    "Kostenzaehler",
     "LLMErgebnis",
     "LLMGateway",
     "Nachricht",
@@ -76,19 +81,60 @@ class CircuitBreaker:
         self.schwelle, self.abkuehl_s, self.uhr = schwelle, abkuehl_s, uhr
         self.fehler = 0
         self.offen_seit: float | None = None
+        self._sperre = threading.Lock()
 
     def darf(self) -> bool:
-        if self.offen_seit is None:
-            return True
-        return self.uhr() - self.offen_seit >= self.abkuehl_s
+        with self._sperre:
+            if self.offen_seit is None:
+                return True
+            return self.uhr() - self.offen_seit >= self.abkuehl_s
 
     def erfolg(self) -> None:
-        self.fehler, self.offen_seit = 0, None
+        with self._sperre:
+            self.fehler, self.offen_seit = 0, None
 
     def fehlschlag(self) -> None:
-        self.fehler += 1
-        if self.fehler >= self.schwelle:
-            self.offen_seit = self.uhr()
+        with self._sperre:
+            self.fehler += 1
+            if self.fehler >= self.schwelle:
+                self.offen_seit = self.uhr()
+
+
+class Kostenzaehler:
+    """Kosten pro Kalendertag, geteilt von allen Anrufen eines Prozesses.
+
+    Beim ersten Zugriff an einem neuen Tag (``tag()``) beginnt die Summe bei 0.
+    """
+
+    def __init__(self, limit: float = 50.0, tag: Callable[[], date] = date.today) -> None:
+        if limit < 0:
+            raise ValueError("limit muss >= 0 sein")
+        self.limit = limit
+        self._tag = tag
+        self._sperre = threading.Lock()
+        self._datum = tag()
+        self._summe = 0.0
+
+    def _rollen(self) -> None:
+        heute = self._tag()
+        if heute != self._datum:
+            self._datum, self._summe = heute, 0.0
+
+    @property
+    def heute(self) -> float:
+        with self._sperre:
+            self._rollen()
+            return self._summe
+
+    def erschoepft(self) -> bool:
+        return self.heute >= self.limit
+
+    def buchen(self, betrag: float) -> None:
+        if betrag < 0:
+            raise ValueError("betrag muss >= 0 sein")
+        with self._sperre:
+            self._rollen()
+            self._summe += betrag
 
 
 @dataclass
@@ -172,17 +218,27 @@ class LLMGateway:
         *,
         token_budget_pro_anruf: int = 20000,
         tageslimit: float = 50.0,
+        kosten: Kostenzaehler | None = None,
         antwort_pruefer: Sequence[Pruefer] = STANDARD_ANTWORT_PRUEFER,
         uhr_ms: Callable[[], float] | None = None,
     ) -> None:
+        """``kosten`` teilt das Tageslimit mit anderen Gateways; ohne Angabe
+        erhält das Gateway einen eigenen Zähler mit ``tageslimit``."""
         self.backends = backends  # Reihenfolge = Präferenz
         self.audit = audit
         self.token_budget = token_budget_pro_anruf
-        self.tageslimit = tageslimit
+        self.kosten = kosten if kosten is not None else Kostenzaehler(tageslimit)
         self.antwort_pruefer = tuple(antwort_pruefer)
         self.verbrauch_tokens: dict[str, int] = {}
-        self.kosten_heute = 0.0
         self.uhr_ms: Callable[[], float] = uhr_ms or (lambda: time.monotonic() * 1000.0)
+
+    @property
+    def tageslimit(self) -> float:
+        return self.kosten.limit
+
+    @property
+    def kosten_heute(self) -> float:
+        return self.kosten.heute
 
     def kandidaten(self, klasse: int) -> list[Backend]:
         return [b for b in self.backends if region_erlaubt(b.region, klasse)]
@@ -190,7 +246,7 @@ class LLMGateway:
     def _vorpruefung(self, klasse: int, anruf_id: str) -> list[Backend]:
         if self.verbrauch_tokens.get(anruf_id, 0) >= self.token_budget:
             raise BudgetErschoepft(f"Token-Budget für Anruf {anruf_id} erschöpft")
-        if self.kosten_heute >= self.tageslimit:
+        if self.kosten.erschoepft():
             raise BudgetErschoepft("Tageslimit erreicht")
         kandidaten = self.kandidaten(klasse)
         if not kandidaten:
@@ -201,7 +257,7 @@ class LLMGateway:
     def _verbuchen(self, b: Backend, anruf_id: str, t_ein: int, t_aus: int) -> float:
         kosten = (t_ein + t_aus) / 1000.0 * b.preis_pro_1k_token
         self.verbrauch_tokens[anruf_id] = self.verbrauch_tokens.get(anruf_id, 0) + t_ein + t_aus
-        self.kosten_heute += kosten
+        self.kosten.buchen(kosten)
         return kosten
 
     def _satz_pruefen(self, satz: str, anruf_id: str) -> tuple[str, list[Befund]]:
