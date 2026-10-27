@@ -122,20 +122,27 @@ def test_argparse_fehler_ergeben_rueckgabewert_2() -> None:
     assert e.value.code == 2
 
 
-def test_geschlossene_pipe_ohne_fehlermeldung() -> None:
+@pytest.mark.parametrize("ungepuffert", [True, False])
+def test_geschlossene_pipe_ohne_fehlermeldung(ungepuffert: bool) -> None:
     """Wie «gw-contactcenter vergleich | head -0»: Der Leser schliesst die Pipe,
-    bevor die Ausgabe kommt (die Rechnung dauert länger als das Schliessen)."""
+    bevor die Ausgabe kommt (die Rechnung dauert länger als das Schliessen).
+    Gepuffert tritt der Fehler erst beim Leeren des Puffers auf."""
+    import os
     import subprocess
     import sys
 
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONUNBUFFERED"}
+    if ungepuffert:
+        env["PYTHONUNBUFFERED"] = "1"
     p = subprocess.Popen(
         [sys.executable, "-m", "gw_contactcenter", "vergleich"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        env=env,
     )
     assert p.stdout is not None and p.stderr is not None
     p.stdout.close()
     fehler = p.stderr.read()
     assert p.wait(timeout=60) == 1
-    assert "Fehler" not in fehler and "Traceback" not in fehler
+    assert not any(w in fehler for w in ("BrokenPipe", "Traceback", "Fehler")), fehler

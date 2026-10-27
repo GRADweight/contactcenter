@@ -239,17 +239,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(__version__)
         return 0
     befehl, rest = args[0], args[1:]
+    if befehl not in (*befehle, "latenz-messen", "server"):
+        print(f"unbekannter Befehl {befehl!r}\n{__doc__}", file=sys.stderr)
+        return 2
     try:
         if befehl in befehle:
-            return befehle[befehl](rest)
-        if befehl == "latenz-messen":
+            rc = befehle[befehl](rest)
+        elif befehl == "latenz-messen":
             from .latenzmessung import main as latenz_main
 
-            return latenz_main(rest)
-        if befehl == "server":
+            rc = latenz_main(rest)
+        else:
             from .server import main as server_main
 
-            return server_main(rest)
+            rc = server_main(rest)
+        sys.stdout.flush()  # Schreibfehler hier abfangen, nicht erst beim Beenden
     except BrokenPipeError:
         # Ausgabe in eine Pipe, die früh geschlossen wurde (z. B. «| head»): still beenden.
         os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
@@ -259,5 +263,4 @@ def main(argv: Sequence[str] | None = None) -> int:
         # Meldung statt Traceback, Rückgabewert 2 wie bei argparse-Fehlern.
         print(f"Fehler: {e}", file=sys.stderr)
         return 2
-    print(f"unbekannter Befehl {befehl!r}\n{__doc__}", file=sys.stderr)
-    return 2
+    return rc
