@@ -1,139 +1,88 @@
-# 10 - Betrieb und Wartung
+# 10 Betrieb: Start, Überwachung, Störungen
 
-> **Stand: Oktober 2026.** 24/7-Betrieb (s. 5) ist
-> *kein* Standard für KMU. 8h-Betrieb + 1
-> KI-Owner (6h/Woche) ist der Standard.
+## Start nur mit vollständiger Konfiguration
 
-## 1. 8h vs. 24/7 (die Haupt-Frage)
+`gw-contactcenter server` startet standardmässig im Modus `produktion` und verweigert den
+Start, solange eine dieser Bedingungen fehlt (`ServerKonfig.maengel()`):
 
-| Aspekt | 8h (Mo-Fr) | 24/7 |
+- `AUDIOHOOK_API_KEY` und `AUDIOHOOK_CLIENT_SECRET` (Base64) für die Signaturprüfung,
+- `AUDIT_HMAC_KEY` mit mindestens 32 Byte und `AUDIT_DIR` für ein persistentes Audit,
+- `LLM_URL`, `ASR_URL`, `TTS_URL` sowie `TTS_MODELL` und `TTS_STIMME`.
+
+Der Modus `entwicklung` (`GW_MODUS=entwicklung`) erlaubt Mock-Adapter, ein Audit ohne HMAC und
+Verbindungen ohne Signatur, aber nie ohne API-Key. Geheimnisse liest der Server nur aus der
+Umgebung, nie von der Kommandozeile. Das Compose-Beispiel bricht schon beim Start ab, wenn
+eine Pflichtvariable fehlt (`${VAR:?}`).
+
+## Endpunkte
+
+| Endpunkt | Inhalt |
+|---|---|
+| `ws://HOST:PORT` | Audio Connector (WebSocket); im Compose-Beispiel hinter Caddy mit TLS |
+| `http://HOST:METRICS_PORT/healthz` | `ok`, sobald der Prozess läuft |
+| `http://HOST:METRICS_PORT/metrics` | Prometheus-Textformat |
+
+Caddy leitet `/metrics` und `/healthz` nicht nach aussen weiter; Prometheus liest sie im
+internen Netz.
+
+## Metriken
+
+Pro Stufe eine Summary `gw_contactcenter_<stufe>_ms` mit p50, p95, p99, `_sum` und `_count`:
+`endpointing`, `asr`, `dialog`, `llm_ttft`, `erster_satz`, `tts_erstes_audio`,
+`zeit_bis_erster_ton`, `barge_in`. Dazu `gw_contactcenter_aktive_sitzungen`. Die Quantile
+beziehen sich auf die letzten 20'000 Messpunkte des Prozesses, nicht auf ein Zeitfenster.
+vLLM liefert eigene Metriken (Warteschlange, KV-Cache-Belegung, TTFT); das Compose-Beispiel
+liest beide.
+
+Sinnvolle Alarme, als Ausgangspunkt:
+
+| Signal | Bedeutung |
+|---|---|
+| p95 `zeit_bis_erster_ton` über dem Zielwert | Modell, ASR oder TTS zu langsam, oder GPU ausgelastet |
+| `aktive_sitzungen` nahe `MAX_SITZUNGEN` | Kanäle reichen nicht; Genesys erhält 503 |
+| vLLM-Warteschlange > 0 über längere Zeit | GPU ausgelastet ([11](11-performance-architektur.md)) |
+| Anteil `notfall_uebergabe` im Audit steigt | ein Dienst fällt aus oder läuft in Zeitüberschreitungen |
+
+## Verhalten bei Störungen
+
+| Störung | Verhalten im Code | Nachweis |
 |---|---|---|
-| Köpfe | 1 KI-Owner | 2+ |
-| ~CHF/Mo | 1500 | 5000-6000 |
-| SLA | < 2h Antwort | < 15 min |
-| RTO | 4h | 30 min |
+| Ungültige oder fehlende Signatur | HTTP 401 nach 0.5 s Verzögerung, keine Sitzung | `tests/test_server.py` |
+| Zu viele gleichzeitige Anrufe (`MAX_SITZUNGEN`) | HTTP 503; der Architect-Flow muss in die normale Queue weiterleiten | `tests/test_server.py` |
+| LLM-Fehler oder Zeitüberschreitung | Wiederholung mit Backoff, dann nächstes zulässiges Backend; nach 3 Fehlern in Folge ist ein Backend für alle Anrufe des Prozesses 30 s gesperrt | `tests/test_gateway.py`, `tests/test_adapter_http.py`, `tests/test_server.py` |
+| Kein zulässiges Backend, Token-Budget erschöpft | Ansage und Übergabe an einen Menschen, Audit `notfall_uebergabe` | `tests/test_gateway.py`, `tests/test_pipeline_sim.py` |
+| ASR- oder TTS-Fehler | Übergabe statt Auflegen; ohne TTS ohne Ansage (`notfall_ohne_ansage`) | `tests/test_pipeline_sim.py` |
+| Antwortfilter schlägt an | Ersatzsatz statt der Modellantwort, Audit mit Befund | `tests/test_gateway.py` |
 
-Fuer < 500 Nutzer: 8h-Betrieb, 1 KI-Owner
-(6h/Woche). 24/7 nur bei regulierter
-Branche ODER vertraglich noetig.
+## Audit prüfen
 
+Jede Sitzung schreibt `AUDIT_DIR/<session-id>.jsonl`. Prüfen:
 
-## 2. Runbook (7 Szenarien, kurz)
+```text
+AUDIT_HMAC_KEY=... gw-contactcenter audit-pruefen /pfad/zur/sitzung.jsonl
+```
 
-| # | Szenario | Aktion | RTO |
-|---|---|---|---|
-| 1 | vLLM-Ausfall | Fallback-Kette (LiteLLM) auf Ollama/local | 60s |
-| 2 | ASR-Ausfall | Voice->Text-Umschaltung auf Web-Chat | 30s |
-| 3 | GPU OOM | Neustart vLLM mit kleinerem batch; `--max-num-seqs` reduzieren | 5min |
-| 4 | Token-Kosten-Spitze | `max_budget` (LiteLLM) -> Abbruch + Log | sofort |
-| 5 | Audit-Log Lücke | `audit`-Tabelle prüfen (Postgres); JSONL-Restore | 1h |
-| 6 | RAG-Regression | `evals/run.py` (4/4 muss grün sein); Fallback-Antwort | 10min |
-| 7 | CRM-Ausfall | Ticket-Queue via `n8n`-Retry; manuelle Notiz | 1h |
-| 8 | Datenleck (V3-V4) | Sofort-Alert, `audit`-Scan, Rechtsbeistand | sofort |
+Rückgabewert 0: Kette intakt, die Ausgabe nennt den letzten Prüfwert. 1: Kette ab einem
+bestimmten Eintrag verletzt. 2: Datei fehlt, Schlüssel falsch oder Format ungültig. Den letzten
+Prüfwert regelmässig an einen getrennten Ort exportieren (z. B. Ticketsystem oder WORM-Speicher):
+Nur so wird auch das Abschneiden am Ende der Datei erkennbar.
 
+Den HMAC-Schlüssel wie ein Passwort verwalten. Wer ihn kennt, kann eine gültige Kette neu
+schreiben.
 
-## 3. Monitoring (Prometheus + Langfuse)
+## Grenzen
 
-- **Prometheus** (CPU, GPU, RAM,
-  vLLM-Metriken) s.
-  `docs/04-vllm-inferenz.md` 5.
-- **Langfuse** (Token, Kosten,
-  Latenz, RAG-Score) s.
-  `platforms/stack/observability/`.
-  Fuer < 5 Pers.: Prometheus
-  allein reicht.
-- **PII-Monitor**: `beispiele/
-  transkript_pipeline.py`
-  (PII-Masking pro Anruf).
-- **Audit-Log** (Postgres/JSONL)
-  s. `gw_core/audit.py`.
-  10 J Aufbew. (DSG-Nachweis).
+- Circuit Breaker und Tageskosten gelten pro Prozess (`server.Geteilt`), nicht über mehrere
+  Instanzen hinweg; bei mehreren Instanzen hat jede ihren eigenen Zähler.
+- Kein Runbook für Hardware, Backups oder Notfallwiederherstellung; das hängt von der
+  Plattform des Betreibers ab.
+- Die Metriken sind Summaries ohne Histogramm; Quantile lassen sich über mehrere Instanzen
+  nicht korrekt mitteln.
 
-
-## 4. Backup, DR, RTO/RPO
-
-- **RPO** (Recovery Point
-  Objekt): 1 Stunde
-  (fuer V3-V4,
-  Transkrip-Ton
-  und Transkript-
-  Text).
-- **RTO** (Recovery Time
-  Objekt): 4 Stunden
-  (fuer 8-Betrieb,
-  1 KI-Owner,
-  ein Backup-
-  Restore pro Woche
-  getestet).
-- **Backup**: `pg_dump`
-  Postgres +
-  `docker volume`
-  + `S3-kompatibel`
-  (Exoscale
-  Storage).
-  1x/Week
-  automatisch,
-  1x/Month
-  Restore
-  test.
-- **DR**: 1x A100
-  Backup
-  (2 GPUs)
-  bei V3-V4
-  (kein SPOF).
-
-
-## 5. 24/7-Betrieb (ab ~500)
-
-Nicht Standard für KMU.
-Nur wenn:
-
-- **Regulierte Branche**
-  (DSG-Höchstmuster,
-  Finanzdienstleistung)
-  oder
-- **Vertraglich noetig**
-  (SLA-Vertrag mit
-  24/7-Klausel).
-
-Kosten: **2 Köpfe**
-(~5-6k CHF/Mo)
-+ Hardware
-(8-15k CHF/Mo,
-Cluster) +
-Team (80-120k
-Jahreslohn,
-500+ Pers.).
-
-**Die ehrliche Antwort:**
-Unter 500
-Nutzern ist
-24/7 kein
-gültiger
-Grund.
-
-## 6. Grenzen (ehrlich)
-
-- **Kein Rechtsrat** -
-  Rechtsbeistand +
-  `governance`.
-- **Kein 24/7** im
-  KMU-Standard.
-- **Kalkulation**
-  sind
-  Grössenordnungen
-  (10/2026, CH).
-- **Langfuse**
-  ist
-  optional
-  bei < 5 Pers.
-
-## 7. Kritische Fragen
+## Kritische Fragen
 
 | # | Frage | Warum |
 |---|---|---|
-| 1 | 8h oder 24/7? | < 500: 8h; > 500: 24/7 nur bei reguliert/vertraglich. |
-| 2 | Wer ist KI-Owner? | 6h/Woche = Minimum; ohne ihn: kein G-Gate, kein G4. |
-| 3 | Welche Runbook-Szenarien? | 7-8 abgedeckt (s. 2). |
-| 4 | RTO/RPO-Grenzen? | DSG-Aufbeharungsfrist = RPO-bindend. |
-| 5 | Wer betreut 24/7? | Muss separat budgetiert sein (~5-6k/Mo). |
+| 1 | Wer hat Bereitschaft in den Öffnungszeiten des Kundendiensts? | Ein ausgefallener Agent leitet alles an Menschen weiter; die müssen dann verfügbar sein. |
+| 2 | Wo liegen die Schlüssel (API-Key, Client-Secret, HMAC), und wer rotiert sie? | Schlüssel im Klartext auf dem Host sind ein häufiger Schwachpunkt. |
+| 3 | Wohin wird der letzte Audit-Prüfwert exportiert? | Ohne externen Anker bleibt Abschneiden unentdeckt. |

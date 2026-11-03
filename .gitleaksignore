@@ -1,0 +1,5 @@
+# Befunde in früheren Commits, die keine Geheimnisse sind:
+# - öffentlicher Testvektor (API-Key) aus der Genesys-AudioHook-Dokumentation
+# - Platzhalter («platzhalter» in Base64) für die Compose-Prüfung in der CI
+7e2a176357a6a73488512e18654cc901c4358639:tests/test_signatur.py:generic-api-key:27
+ff2eaa6f0700d0ee6c8e6e6f6f6d72dda184e7b9:.github/workflows/ci.yml:generic-api-key:127

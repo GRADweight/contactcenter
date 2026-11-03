@@ -1,0 +1,147 @@
+# Einzelserver mit einer GPU: Sprachagent, LLM (vLLM), ASR/TTS (speaches),
+# TLS-Proxy (Caddy) und optional Monitoring. Alle Modelle laufen lokal.
+#
+#   Genesys Cloud (Audio Connector) -> wss://<DOMAIN> -> caddy -> agent
+#
+#   cp deploy/.env.example deploy/.env    # Werte setzen (Pflichtfelder siehe dort)
+#   docker compose -f deploy/compose.yaml --env-file deploy/.env up -d
+#   docker compose -f deploy/compose.yaml --env-file deploy/.env --profile monitoring up -d
+#
+# Sicherheitsregeln dieser Datei (geprüft in tests/test_deploy.py):
+# * Kein Container läuft als root. vLLM nutzt den vorgesehenen Benutzer 2000
+#   (Gruppe 0, OpenShift-Konvention des vLLM-Images), speaches den Benutzer 1000
+#   des Images, Caddy ein eigenes Image mit Benutzer 10001 (deploy/Caddy.Dockerfile).
+# * Ports nur an 127.0.0.1. Der öffentliche Zugang für Genesys ist eine bewusste
+#   Entscheidung: PUBLIC_BIND_ADDR=0.0.0.0 in deploy/.env setzen.
+# * Geheimnisse sind Pflicht (${VAR:?}); ohne sie startet nichts.
+# * Images mit fester Version. Vor Produktion zusätzlich auf Digest pinnen
+#   (image: name@sha256:...), nachdem das Image geprüft wurde.
+#
+# Nicht auf GPU-Hardware getestet; geprüft sind Struktur und Richtlinien.
+name: contactcenter
+
+x-haertung: &haertung
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+  restart: unless-stopped
+
+services:
+  caddy:                                 # TLS (Let's Encrypt) und WebSocket-Proxy
+    <<: *haertung
+    build: { context: ., dockerfile: Caddy.Dockerfile }
+    user: "10001:10001"
+    read_only: true
+    tmpfs: [/tmp]
+    ports:
+      - "${PUBLIC_BIND_ADDR:-127.0.0.1}:443:8443"
+      - "${PUBLIC_BIND_ADDR:-127.0.0.1}:80:8080"   # nur ACME-HTTP-Challenge
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN setzen, z. B. voice.example.ch}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [agent]
+
+  agent:                                 # Audio-Connector-Server, Dialog, Gateway, Audit
+    <<: *haertung
+    build: { context: .., dockerfile: deploy/Dockerfile }
+    user: "10001:10001"
+    read_only: true
+    tmpfs: [/tmp]
+    environment:
+      GW_MODUS: produktion
+      HOST: 0.0.0.0                      # nur im internen Compose-Netz erreichbar
+      AUDIOHOOK_API_KEY: ${AUDIOHOOK_API_KEY:?API-Key aus der Genesys-Integration}
+      AUDIOHOOK_CLIENT_SECRET: ${AUDIOHOOK_CLIENT_SECRET:?Client Secret (Base64) aus der Genesys-Integration}
+      AUDIT_HMAC_KEY: ${AUDIT_HMAC_KEY:?mindestens 32 Zeichen, zufällig}
+      AUDIT_DIR: /audit
+      MAX_SITZUNGEN: ${MAX_SITZUNGEN:-10}
+      LLM_URL: http://vllm:8000/v1
+      LLM_MODELL: ${LLM_MODELL:?LLM_MODELL setzen}
+      LLM_EXTRA_JSON: '{"chat_template_kwargs": {"enable_thinking": false}}'
+      ASR_URL: http://speaches:8000/v1
+      ASR_MODELL: ${ASR_MODELL:?ASR_MODELL setzen}
+      TTS_URL: http://speaches:8000/v1
+      TTS_MODELL: ${TTS_MODELL:?deutsche TTS-Stimme setzen}
+      TTS_STIMME: ${TTS_STIMME:?TTS_STIMME setzen}
+      TTS_FORMAT: pcm
+      TTS_ABTASTRATE: "8000"
+    volumes:
+      - audit:/audit                     # auf Speicher mit Snapshots oder WORM ablegen
+    expose: ["8080", "9100"]
+    depends_on:
+      vllm: { condition: service_healthy }
+      speaches: { condition: service_healthy }
+
+  vllm:                                  # LLM-Inferenz, OpenAI-kompatibel
+    <<: *haertung
+    image: ${VLLM_IMAGE:-vllm/vllm-openai:v0.32.0}
+    user: "2000:0"
+    environment:
+      HOME: /home/vllm
+      HF_TOKEN: ${HF_TOKEN:-}
+    command:
+      - --model=${LLM_MODELL:?LLM_MODELL setzen}
+      - --max-model-len=8192
+      - --max-num-seqs=32
+      - --gpu-memory-utilization=0.60    # Rest der Karte für ASR und TTS
+      - --enable-prefix-caching
+    volumes: [vllm_cache:/home/vllm/.cache]
+    ipc: host
+    expose: ["8000"]
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 40
+    deploy:
+      resources:
+        reservations:
+          devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
+
+  speaches:                              # ASR (faster-whisper) und TTS (Piper)
+    <<: *haertung
+    image: ${SPEACHES_IMAGE:-ghcr.io/speaches-ai/speaches:0.8.3-cuda}
+    user: "1000:1000"
+    volumes: [hf_hub:/home/ubuntu/.cache/huggingface/hub]
+    expose: ["8000"]
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    deploy:
+      resources:
+        reservations:
+          devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
+
+  prometheus:
+    <<: *haertung
+    image: prom/prometheus:v3.15.1
+    profiles: [monitoring]
+    user: "65534:65534"
+    read_only: true
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_daten:/prometheus
+
+  grafana:
+    <<: *haertung
+    image: grafana/grafana:13.2.4
+    profiles: [monitoring]
+    user: "472:0"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD setzen}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    ports: ["127.0.0.1:3000:3000"]       # nur lokal oder über VPN
+    volumes: [grafana_daten:/var/lib/grafana]
+
+volumes:
+  caddy_data:
+  caddy_config:
+  audit:
+  vllm_cache:
+  hf_hub:
+  prometheus_daten:
+  grafana_daten:

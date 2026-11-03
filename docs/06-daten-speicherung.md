@@ -1,135 +1,72 @@
-# 06 - Daten-Speicherung und Aufbewahrung
+# 06 Daten: Klassen, Verarbeitungsort, Speicherbedarf
 
-> **Stand: Oktober 2026.** Kein Rechtsangebot. Vor jeder
-> Entscheidung Rechtsbeistand + `governance` pruefen.
+Kein Rechtsrat. Das Dossier beschreibt, welche Daten das System verarbeitet und wo; ob und wie
+lange das zulässig ist (revDSG, Branchenrecht, Aufbewahrungspflichten, bei EU-Bezug DSGVO und
+EU AI Act), klärt der Betreiber mit Fachleuten.
 
-## 1. Die 5 Daten-Kategorien
+## Welche Daten anfallen
 
-Ein KI-Kundendienst speichert 5 Dinge - jede mit
-anderer Frist, anderem Ort, anderem Zugang:
-
-| Kat. | Beispiel | DSG-Stufe | Aufbew. | Lager |
-|---|---|---|---|---|
-| 1. Ton (16 kHz) | Wave-Datei | Hoechste | 10-30 J | lokal / CH-Cloud |
-| 2. Transkript | Text | Hoch | 3-10 J | Postgres / CH |
-| 3. Ticket | Antwort, SLA | Mitt | 5-7 J | CRM / Postgres |
-| 4. RAG-Index | Chunks, Embed | Niedr | 1-3 J | Qdrant / pgvector |
-| 5. Audit | Wer/Was/Wann | Hoechst | 10 J | append-only |
-
-**Der häufigste Fehler:** alle 5 *gemeinsam* aufbewahren.
-Ton-File mit Name/Adresse/Konto (Kat. 1+2+3) darf
-NICHT im selben Bucket wie eine FAQ (Kat. 4) liegen.
-Jede Kategorie hat ein eigenes Verschuersselungs- und
-Loesch-Profil.
-
-
-## 2. DSG / DSGVO (Kurz, nicht rechtlich)
-
-- **DSG (CH, 2023):** Keine
-  Pflichtfrist. Art. 8 verlangt
-  Verantwortlichkeit, also eine
-  **Aufbewarungs-Regel** pro
-  Kategorie. Banken 10 J, Insurance
-  30 J (DSG + Branchenrecht).
-- **DSGVO (EU):** Keine Pflichtfrist,
-  aber Verhaeltnismaessigkeit
-  (nicht laenger als noetig).
-- **AI-Act (EU, 2024):** Kat-1
-  (Hoch-Risiko) = 10 J Audit.
-- **CH-Spezifik:** DSG verlangt
-  keine Pflicht-Aufbeharung, aber
-  jede Kat. muss geregelt sein.
-  Ohne Regel = DSG-Verstoss Art. 8.
-
-
-## 3. Wo speichern (CH-Region)
-
-| Option | CH? | DSG | Fuer |
-|---|---|---|---|
-| On-Prem (Mac/Server) | Ja | Hoechste | V3-V4, klein |
-| Exoscale CH | Ja | Hoch | 50-500 Pers. |
-| Infomaniak (Lutry) | Ja | Hoch | KMU |
-| Azure CH-SWISS | Ja | Hoch | Enterprise |
-| OpenAI/Anthropic | Nein (US) | Nein | V0-V1 nur |
-
-**Die Regel:** V3-V4 (vertraulich/streng)
-müssen **in CH** (On-Prem oder
-CH-Cloud). V0-V1 (öffentlich/normal)
-können in EU/US. Der Router
-(`beispiele/handoff_router.py`,
-`darf_in_cloud`) entscheidet
-pro Ticket:
-
-```
-V0 -> alle (inlc. Cloud)
-V1 -> Cloud ok
-V2 -> CH-Cloud / On-Prem
-V3 -> On-Prem / CH-Bare-Metal
-V4 -> On-Prem, 2x Backup
-```
-
-
-## 4. Vektor-DB: pgvector vs. Qdrant
-
-| | pgvector | Qdrant |
+| Daten | Wo im System | Standard im Repo |
 |---|---|---|
-| Daten | < 1M Chunks | > 1M |
-| p95 | < 100ms (1M) | < 100ms (10M) |
-| Permission | `access_level` Int | `access_level` Int |
-| Fuer | < 250 Pers. | > 250 |
-| ~CHF/Mo | 50-80 | 300-500 |
-| Wechsl | < 250: nicht noetig | 250+: zwingend |
+| Audio des Anrufs | Arbeitsspeicher des Agenten, ASR-Dienst | wird **nicht** gespeichert |
+| Transkript und Verlauf | Arbeitsspeicher des Dialogs, Prompts an das LLM | pseudonymisiert, nicht gespeichert |
+| Übergabedaten | Genesys (`outputVariables`), Ticket | Ziel, Anliegen, Ticketnummer; Zusammenfassung pseudonymisiert |
+| Audit | JSON-Lines-Datei pro Sitzung (`AUDIT_DIR`) | Entscheidungen ohne Rohtext, HMAC-Kette |
+| Latenzwerte | Prometheus | nur Zeiten und Stufennamen |
 
-**Der Wechselpunkt** (~1M Chunks,
-< 100ms p95; s.
-`platforms/selbstbau-
-blupause.md`): pgvector ist
-der Flaschenhals, Qdrant
-zwingend. Pfad: 2-zeiliger
-Adapter, ein Nachmittag.
+Personendaten, die der PII-Tresor erkennt (IBAN, Karte, AHV-Nummer, E-Mail, Telefon,
+Kontoangaben), ersetzt der Dialog vor jedem Modellaufruf durch Platzhalter wie `[IBAN_1]`.
+Die Klartexte bleiben im Arbeitsspeicher des Anrufs und gehen nur an Werkzeuge im eigenen
+System. Namen, Adressen und Freitextangaben erkennt der Tresor nicht ([16](16-leitplanken.md)).
 
+## Datenklassen und Verarbeitungsort
 
-## 5. Datenlebenszyklus
+Jedes Anliegen hat eine Datenklasse V0-V4 ([07](07-weiterleitung-handoff.md)). Die Klasse
+bestimmt, in welcher Region ein Modell die Anfrage bearbeiten darf (`policy.py`):
 
-```
-Ton -> Transkript (ASR)
-    -> PII-Mask (Name/Konto)
-    -> Chunking -> Embedding
-    -> VektorDB (Qdrant/pgvector)
-    -> Retrieval (RAG)
-    -> Antwort (LLM + Quellen)
-    -> Ticket (Postgres/CRM)
-    -> Audit (JSONL, append-only)
-    -> Rotation (Jahre pro Kat., Loeschprotokoll)
-```
+| Datenklasse | Offenste erlaubte Region für das Modell |
+|---|---|
+| V0 öffentlich | `us` |
+| V1 normal | `eu` |
+| V2 intern | `lokal` |
+| V3 vertraulich | `lokal` |
+| V4 streng | `lokal` |
 
-Jede Etappe loggt ihre Quelle
-(s. `gw_core/audit.py`).
-Ohne Quelle = keine Antwort
-(s. `docs/01-architektur.md` §4.2).
+Regeln: Personendaten im Gespräch heben die Klasse auf mindestens V2. Eine einmal erreichte
+Klasse sinkt im selben Anruf nicht mehr. Die erste Klassifikation läuft immer auf einem
+lokalen Modell. Die Zuordnung ist ein Beispiel; welche Region für welche Klasse vertretbar ist,
+entscheidet der Betreiber.
 
+## Speicherbedarf für Aufzeichnungen
 
-## 6. Grenzen (ehrlich)
+Falls Gespräche aufgezeichnet werden (nicht Teil des Repos), rechnet `speicherbedarf()` bzw.
+`gw-contactcenter kapazitaet --speicher` den Umfang. Für 200 Anrufe zu 120 s:
 
-- **Kein Rechtsrat** - DSG/
-  DSGVO/AI-Act: Rechtsbeistand
-  + `governance`.
-- **PII-Masking** im Sample ist
-  Regex (grob); Produktion:
-  Presidio + NER.
-- **Kalkulation** (CHF) sind
-  Groessenordnungen,
-  s. `OFFENE_PUNKTE.md` #1.
-- **DSG-Aufbeharungsfristen**
-  sind pro Branche; die
-  Tabelle ist Anfallskompakt.
+- G.711 Stereo (8000 Samples/s × 1 Byte × 2 Kanäle = 16'000 Byte/s): 384 MB pro Tag.
+- Opus mit 32 kbit/s (Bitrate als Konfigurationsannahme): 96 MB pro Tag.
+- Transkripte (Annahme 4000 Token × 4 Byte pro Anruf): 3.2 MB pro Tag.
 
-## 7. Kritische Fragen
+Der Ton dominiert. Ob überhaupt aufgezeichnet wird, wie lange und wer Zugriff hat, ist zuerst
+eine rechtliche und organisatorische Frage.
+
+## Audit-Daten
+
+Die Audit-Kette enthält pro Ereignis Zeitpunkt, Ereignistyp und Entscheidungsdaten (Anliegen,
+Aktion, Datenklasse, Backend, Region, Werkzeug, Übergabegrund), keine Rohtexte. Die Kette
+erkennt Änderungen, Löschungen und Einfügungen innerhalb der Datei; gegen das Abschneiden der
+letzten Einträge hilft nur ein externer Anker, z. B. der regelmässig exportierte letzte
+Prüfwert ([10](10-betrieb-ops.md)).
+
+## Grenzen
+
+- Keine Aufbewahrungs- oder Löschlogik im Code.
+- Kein Verzeichnis der Bearbeitungstätigkeiten, keine Datenschutz-Folgenabschätzung.
+- Die Pseudonymisierung ist regelbasiert; sie ist keine Anonymisierung.
+
+## Kritische Fragen
 
 | # | Frage | Warum |
 |---|---|---|
-| 1 | Welche Kat. (V0-V4) pro Datentyp? | Ohne Kat. = kein routing. |
-| 2 | Wo speichern (On-Prem/CH/EU)? | Bei DSG-Gepraech: V3-V4 in CH. |
-| 3 | Wie lang Aufbew. (Branche)? | BANK 10 J, INSUR 30 J, KMU 2-3 J. |
-| 4 | pgvector oder Qdrant? | <1M Chunks: pgvector; >1M: Qdrant. |
-| 5 | Wer sieht den Audit-Log? | Ohne klaren Zugang = Leichenschrein. |
+| 1 | Werden Gespräche aufgezeichnet, und wenn ja, mit welcher Rechtsgrundlage und Information der Anrufenden? | Bestimmt Speicher, Zugriff und Löschung. |
+| 2 | Welche Datenklassen dürfen in eine Cloud-Region, welche nie? | Bestimmt die Backends im Gateway. |
+| 3 | Wer darf das Audit lesen, und wie lange wird es aufbewahrt? | Ohne Regel ist ein Audit-Log selbst ein Risiko. |

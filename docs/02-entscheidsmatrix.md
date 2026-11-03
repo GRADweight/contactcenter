@@ -1,70 +1,35 @@
-# 02 - Entscheidungs-Matrix
+# 02 Entscheidsmatrix: Welche Frage wird wo beantwortet?
 
-> **Stand: Oktober 2026.** Kein
-> Rechtsangebot. Zeigt,
-> in welcher Doku
-> (00-10) jede
-> Facette gelöst
-> wird und welches
-> von drei Samples
-> lauffähig ist.
+| Frage | Dossier | Code | Nachweis |
+|---|---|---|---|
+| Architektur und Datenfluss | [01](01-architektur.md), [12](12-zielarchitektur.md) | `gw_contactcenter/` | `tests/test_pipeline_sim.py` |
+| Telefonie (Genesys) | [12](12-zielarchitektur.md) | `audiohook.py`, `signatur.py`, `server.py` | `tests/test_audiohook.py`, `tests/test_signatur.py`, `tests/test_server.py` |
+| Turn-Taking, Barge-in | [12](12-zielarchitektur.md), [15](15-latenz.md) | `turn.py`, `pipeline.py` | `tests/test_turn.py` |
+| Spracherkennung | [03](03-asr-transkribation.md) | `adapters/openai_compat.py` | `tests/test_adapter_http.py` |
+| Inferenz und Modellbetrieb | [04](04-vllm-inferenz.md) | `deploy/compose.yaml` | `tests/test_deploy.py` |
+| Personal und Kanäle | [05](05-skalierung.md) | `warteschlange.py`, `kapazitaet.py` | `tests/test_warteschlange.py`, `tests/test_warteschlange_sim.py` |
+| Daten und Speicher | [06](06-daten-speicherung.md) | `policy.py`, `pii.py`, `kapazitaet.py` | `tests/test_pii.py`, `tests/test_kapazitaet.py` |
+| Weiterleitung | [07](07-weiterleitung-handoff.md) | `policy.py`, `dialog.py` | `tests/test_dialog.py`, `evals/` |
+| Projekt und Kostentreiber | [08](08-projekt-aufwand-kosten.md) | - | - |
+| Rollen und Kompetenzen | [09](09-skill-wissen-schulung.md) | - | - |
+| Betrieb | [10](10-betrieb-ops.md) | `telemetry.py`, `audit.py`, `deploy/` | `tests/test_telemetry.py`, `tests/test_audit.py` |
+| GPU-Dimensionierung | [11](11-performance-architektur.md) | `sizing.py` | `tests/test_sizing.py` |
+| Begriffe | [13](13-technologien-erklaert.md) | - | - |
+| Speech-to-Speech-Modelle | [14](14-dessa-und-full-duplex.md) | - | - |
+| Latenz | [15](15-latenz.md) | `telemetry.py`, `sim.py`, `latenzmessung.py` | `tests/test_latenzmessung.py` |
+| Leitplanken | [16](16-leitplanken.md) | `leitplanken.py`, `gateway.py`, `tools.py` | `tests/test_leitplanken.py`, `evals/injection_holdout.json` |
 
-## 1. Die 14 Facetten
+Alle Nachweise laufen offline, ohne GPU und ohne Zugangsdaten (`pytest`,
+`python evals/run_evals.py`).
 
-| # | Facette | Doku |
-|---|---|---|
-| 1 | Projekt / Methodik | 08 |
-| 2 | Technologie / Architektur | 01 |
-| 3 | Kosten | 08 |
-| 4 | Aufwand (FTE) | 08 |
-| 5 | Skills | 09 |
-| 6 | Wissen | 09 |
-| 7 | Betrieb | 10 |
-| 8 | Schulung | 09 + training |
-| 9 | Technik (Inferenz) | 04 |
-| 10 | LLM-Transkribation | 03 |
-| 11 | vLLM | 04 |
-| 12 | Skalierung | 05 |
-| 13 | Daten / Speicherung | 06 |
-| 14 | Weiterleitung | 07 |
+## Grenzen
 
-## 2. Die 3 Samples
+- Die Matrix zeigt, wo eine Frage behandelt wird, nicht, dass sie für ein konkretes Projekt
+  beantwortet ist.
 
-| Sample | Facetten |
-|---|---|
-| `transkript_pipeline.py` | 10 (ASR), 13 (Daten) |
-| `skalierungsrechner.py` | 3, 9, 11, 12 |
-| `handoff_router.py` | 1, 14 |
-
-Jedes Sample
-hat `python
-beispiele/<name>.py
-selftest`
-für
-eine
-lokale
-Prüfung
-ohne
-Netz.
-
-## 3. Grenzen
-
-- Kein Rechtsrat
-  (DSG/AI-Act:
-  `governance`).
-- Keine Kalkulation
-  (Grössenordnungen,
-  s. 08).
-- Kein 24/7 im
-  KMU-Standard
-  (s. 10).
-
-## 4. Kritische Fragen
+## Kritische Fragen
 
 | # | Frage | Warum |
 |---|---|---|
-| 1 | Welche Facette im MVP? | 1 = 4-8 Wochen; alle = nie. |
-| 2 | Welche Doku zuerst? | 01 -> 03/04/10 -> Rest. |
-| 3 | Welches Sample pro Facette? | Matrix in 1 und 2. |
-| 4 | Wer prüft was (G-Gates)? | L2 = Prüfer (s. 09). |
-| 5 | Ist 24/7 nötig? | Nur > 500 (s. 10). |
+| 1 | Welche Zeile ist für das eigene Projekt die riskanteste? | Dort zuerst eigene Daten erheben. |
+| 2 | Welche Nachweise braucht die Abnahme zusätzlich? | Eigene Testaufnahmen, eigenes Golden-Set, Lasttest auf der Zielhardware. |

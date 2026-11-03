@@ -1,61 +1,49 @@
-# 08 - Projekt, Aufwand, Kosten (Grössenordnungen)
+# 08 Vorgehen und Aufwandstreiber
 
-> **Stand: Oktober 2026.** Alle Zahlen
-> sind **Grössenordnungen**, keine
-> Offerte (s. `OFFENE_PUNKTE.md` #1).
+Das Dossier nennt keine Preise und keine Personentage: Beides hängt von der Ausgangslage ab
+und wäre ohne konkrete Organisation nicht belegbar. Es beschreibt, in welcher Reihenfolge ein
+Pilot sinnvoll ist, woran jede Phase abgenommen wird und was den Aufwand treibt.
 
-## 1. Die Methodik: Gates G0-G4 (Mikro)
+## Phasen mit prüfbarer Abnahme
 
-Nach `governance`
-(Gates G0-G8), hier ein KMU-
-**Mikro-Gate** (G0-G4):
-| Gate | Name | Was ist
-| G0 | Start | **Frage**: Was ist
-| G1 | Analyse | **Frage**: Welche
-| G2 | Design | **Frage**: Welche
-| G3 | Abnahme | **Frage**: Ist
-| G4 | Betrieb | **Frage**:
+| Phase | Ergebnis | Abnahme |
+|---|---|---|
+| 1 Daten | Anliegen-Katalog mit Häufigkeiten, Spitzenstundenvolumen, AHT aus der ACD | Kapazitätsrechner mit echten Werten statt Annahmen ([05](05-skalierung.md)) |
+| 2 Golden-Set | anonymisierte Testgespräche mit erwarteter Aktion, getrennt in Entwicklungs- und Holdout-Teil | Holdout ist vor dem ersten Tuning eingefroren |
+| 3 Laborbetrieb | Agent gegen echte Modelle, ohne Genesys | `evals/run_evals.py --llm-url ...` besteht das Gate; Latenzmessung auf der Zielhardware ([15](15-latenz.md)) |
+| 4 Genesys-Test | Audio Connector in einer Test-Org, interne Testanrufe | Signaturprüfung, Übergabe mit `outputVariables`, Lasttest mit der geplanten Kanalzahl |
+| 5 Pilot | kleiner Anteil echter Anrufe, ein Anliegen | vorher festgelegte Kennzahlen: Übergabequote, Fehlklassifikationen, Zeit bis zum ersten Ton, Beschwerden |
+| 6 Ausbau | weitere Anliegen | jedes neue Anliegen durchläuft Phase 2 bis 5 |
 
-## 2. Phasen und Aufwand (FTE-Tage)
+Ein Anliegen mit niedrigem Risiko (R0/R1) und hohem Volumen ist der übliche Einstieg. Mehrere
+Anliegen gleichzeitig einzuführen erschwert es, Fehler einer Ursache zuzuordnen.
 
-| Phase | Aufwand (FTE-Tage) | Was ist
-| G0 | 1d | Kickoff +
-| G1 | 3-5d | Analyse +
-| G2 | 5-10d | Design +
-| G3 | 2-3d | Abnahme +
+## Was den Aufwand treibt
 
-## 3. FTE-Kosten (Grössenordnungen)
+- **Datenlage**: Ohne Aufnahmen und ACD-Auswertungen bleiben Kapazität, ASR-Qualität und
+  Anliegen-Katalog Annahmen. Die rechtliche Klärung für Testaufnahmen dauert oft länger als
+  die Technik.
+- **Schweizerdeutsch**: Ein Standard-ASR-Modell kann reichen oder nicht; das zeigt erst die
+  Messung auf eigenen Aufnahmen ([03](03-asr-transkribation.md)).
+- **Anbindung an Fachsysteme**: Bestellstatus, Tickets und Konten liegen in CRM oder ERP.
+  Jedes Werkzeug braucht eine Schnittstelle, Berechtigungen und Tests. Im Repo ist das ein
+  `DemoBackend`.
+- **Hardware**: eigene GPU, gemietete GPU oder gehostetes Modell je Datenklasse
+  ([06](06-daten-speicherung.md), [11](11-performance-architektur.md)).
+- **Betrieb**: Bereitschaft, Überwachung, Modellwechsel und Audit-Auswertung sind laufender
+  Aufwand, nicht einmaliger ([10](10-betrieb-ops.md)).
+- **Genesys-Konfiguration**: Integration, Architect-Flow, Queues und Tests in der Test-Org.
 
-| Rolle | Grössen-ord |
+## Grenzen
 
-## 4. Die 3 Posten (pro
+- Keine Aufwands- oder Kostenschätzung; die Punkte oben sind die Fragen, die eine Schätzung
+  beantworten muss.
+- Kein Rechtsrat zu revDSG, Aufzeichnung oder Branchenregeln.
 
-**Was NICHT tun:** 20 Features
-auf einen Haufen bauen.
-**Was tun:** ein Use-Case
-(ehem. «E-Mail-Triage») als
-4-8 Wochen-MVP, Gate G0-G4
-laufen lassen, **dann**
-erweitern.
-
-## 5. Grenzen (ehrlich)
-
-- **Keine Kalkulation.** Alle
-  CHF-Werte sind
-  Grössenordnungen
-  (10/2026, CH).
-- **Kein 24/7-SLA** im Standard
-  (s. `docs/10-betrieb-ops.md`).
-- **Kein Rechtsrat** für
-  DSG/AI-Act (s.
-  `governance`).
-
-## 6. Kritische Fragen
+## Kritische Fragen
 
 | # | Frage | Warum |
 |---|---|---|
-| 1 | Erst 1 Use-Case oder alle? | 20 Features = nie fertig; 1 MVP = 4-8 Wo. |
-| 2 | Wer ist der KI-Owner? | Ohne ihn: kein G-Gate, kein Betrieb. |
-| 3 | G0 (Start) klar? | Ohne G0: kein G1. |
-| 4 | G3 (Abnahme) mit Zahlen? | Ohne Abnahme: kein G4. |
-| 5 | Budget vs. 3 Posten? | GPU + Cloud + FTE pro Angebot. |
+| 1 | Welches eine Anliegen kommt zuerst? | Bestimmt Golden-Set, Werkzeuge und Pilot. |
+| 2 | Wer nimmt jede Phase ab, und mit welchen Zahlen? | Ohne vorher festgelegte Kennzahlen ist ein Pilot nicht auswertbar. |
+| 3 | Wer betreibt das System nach dem Pilot? | Ohne Betrieb kein produktiver Einsatz. |
