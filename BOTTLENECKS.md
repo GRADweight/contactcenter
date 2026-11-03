@@ -246,12 +246,15 @@ Dossier nach dem Massstab, an dem der Engpass auftritt.
 
 ## 5. Was fehlt, um es zu skalieren
 
-Diese Punkte sind nicht in der [ROADMAP](ROADMAP.md) und sollten dort
-ergaenzt werden:
+Diese Punkte fehlten in der [ROADMAP](ROADMAP.md) und sind dort ergaenzt
+(PR #9, Stand November 2026); die Kennzeichnung zeigt den Zustand:
 
-- **Backpressure-Warteschlange** mit Fristen fuer Anrufe ueber `max_sitzungen`.
-- **Gemeinsamer Sitzungszaehler** ueber mehrere Prozesse.
-- **Externer Audit-Anker** (WORM-Speicher, Hash-Registry).
+- **Backpressure-Warteschlange** mit Fristen fuer Anrufe ueber `max_sitzungen`
+  -- *in ROADMAP, Issue #5*.
+- **Gemeinsamer Sitzungszaehler** ueber mehrere Prozesse -- *in ROADMAP,
+  Issue #6*.
+- **Externer Audit-Anker** (WORM-Speicher, Hash-Registry) -- *in ROADMAP,
+  Issue #7*.
 - **Lasttest ueber Telefonie** mit der geplanten Kanalzahl (steht in der ROADMAP,
   aber ohne diesen Punkt kann kein Ergebnis verifiziert werden).
 - **Mehrere Backends pro Region** ueber Umgebungsvariablen (steht in der ROADMAP,
@@ -318,11 +321,10 @@ die aus dem Code nicht folgt.
   also ein Betriebs-Problem, kein Code-Defizit; das muss in der ROADMAP als
   Betriebs-Punkt stehen.
 
-Diese kritischen Nachfragen begruenden, warum die in Section 5 genannten
-Betriebsmassnahmen nicht als lose To-Dos, sondern als zusammenhoerende Punkte in
-der [ROADMAP](ROADMAP.md) stehen -- konkret: Backpressure-Warteschlange,
-gemeinsamer Sitzungszaehler, externer Audit-Anker und Skill-Based Routing mit
-Schichtplanung.
+Diese kritischen Nachfragen begruenden, warum die Betriebsmassnahmen nicht als
+lose To-Dos, sondern als zusammenhoerende Punkte in der [ROADMAP](ROADMAP.md)
+stehen -- Backpressure-Warteschlange (#5), gemeinsamer Sitzungszaehler (#6),
+externer Audit-Anker (#7) und Skill-Based Routing mit Schichtplanung (#8).
 
 ## 7. Offene Fragen (Entscheid-Checkpunkte)
 
