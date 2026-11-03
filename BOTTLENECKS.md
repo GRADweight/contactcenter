@@ -60,29 +60,40 @@ Zwischenergebnisse verausgibt. Kein anderer Engpass im Code kann das loesen.
 [ROADMAP](ROADMAP.md). Ohne ihn bleibt die Zeit bis zum ersten Ton ueber dem Ziel
 und der Agent wirkt langsam -- unabhaengig von allen anderen Massnahmen.
 
-### 2.2 Ein Thread pro Anruf, hartes Session-Limit ohne Puffer
+### 2.2 Ein Thread pro Anruf, optionales hartes Session-Limit ohne Puffer
 
 **Wo:** `gw_contactcenter/server.py:sitzung` erzeugt pro Anruf einen
-`ThreadPoolExecutor(max_workers=1)`. `gw_contactcenter/server.py:bedienen` haelt
-`AKTIV["sitzungen"]` und lehnt ab, sobald `max_sitzungen` erreicht ist
-(Verschiebung um `MIN_FEHLER_VERZOEGERUNG_S`, 0.5 s, gegen Timing-Seitenkanaele).
+`ThreadPoolExecutor(max_workers=1)` (Zeile 284). `gw_contactcenter/server.py:bedienen`
+haelt den Zaehler `AKTIV["sitzungen"]` (Zeile 61, 283) und lehnt ab, sobald
+`max_sitzungen` erreicht ist -- aber nur im `zugang`-Handler, noch vor Erzeugung
+des Sitzungsthreads, mit HTTP 503 "ausgelastet" (Zeile 434, 438).
+`MIN_FEHLER_VERZOGERUNG_S` (0.5 s, Zeile 62) verschiebt den Abweisungszweigs
+gegen Timing-Seitenkanale; der 503-Pfad selbst wartet nicht auf ihn.
+`max_sitzungen` ist standardmaessig **0** (`ServerKonfig.max_sitzungen`, Zeile 79;
+CLI `--max-sitzungen`, Zeile 151), und die Pruefung liest
+`if k.max_sitzungen and ...` (Zeile 434): **der Cap ist per Default aus** und greift
+nur, wenn er explizit auf >0 gesetzt wird. Ohne ihn wachst die Last ungebremst
+in den Prozess.
 
 **Warum:** Das Modell ist bewusst einfach: jeder Anruf bekommt einen eigenen Thread,
 damit ein langsamer Modellaufruf weder andere Anrufe noch Pings haelt. Das ist
 korrekt fuer Einzellaeufer, aber es skaliert linear mit dem Prozess: ein Prozess
-mit N gleichzeitigen Anrufen braucht N Threads, und der harte Cap `max_sitzungen`
-ist ein Abbruch, keine Warteschlange. Ein Anruf, der abgelehnt wird, bekommt nur
-einen verzoeigerten Fehler -- er wartet nicht.
+mit N gleichzeitigen Anrufen braucht N Threads. Wenn der Cap aktiv ist, ist
+`max_sitzungen` ein Abbruch, keine Warteschlange: ein abgewiesener Anruf bekommt
+einen verzoeigerten 503 -- er wartet nicht. Ist der Cap aus (Standard), fehlt jede
+Grenze und der Prozess waechst, bis das Betriebssystem oder der Thread-Pool
+bricht.
 
 **Hebel:**
-- Ein `Geteilt`-Objekt (Backends und Kostenzaehler) wird in `bedienen` einmal
-  erzeugt und allen Sitzungen des Prozesses uebergeben; die Backends sind
+- Das `Geteilt`-Objekt (Backends und Kostenzaehler, `server.py:Geteilt`,
+  Zeile 226) wird in `bedienen` einmal erzeugt (Zeile 431) und jeder akzeptierten
+  Sitzung uebergeben (`sitzung(ws, k, geteilt)`, Zeile 441); die Backends sind
   geteilt. Das ist schon die richtige Richtung fuer Horizontalite. Was fehlt, ist
-  eine **Backpressure-Warteschlange** statt der harten Ablehnung: Anrufe, die
-  ueber `max_sitzungen` hinauskommen, sollten in eine Warteschlange mit Frist
-  gehen, nicht abgelehnt werden.
+  eine **Backpressure-Warteschlange** statt des 503: Anrufe, die ueber
+  `max_sitzungen` hinauskommen, sollten in eine Warteschlange mit Frist gehen,
+  nicht abgelehnt werden.
 - Fuer Horizontalite ueber mehrere Prozesse hinweg fehlt ein gemeinsamer
-  Sitzungszaehler; `AKTIV` ist prozesslokal.
+  Sitzungszaehler; `AKTIV` ist prozesslokal (Zeile 61).
 - Diese Punkte stehen in der [ROADMAP](ROADMAP.md) unter "Betrieb".
 
 ### 2.3 In-Memory Wissensbasis statt Vektorsuche
@@ -246,7 +257,74 @@ ergaenzt werden:
 - **Mehrere Backends pro Region** ueber Umgebungsvariablen (steht in der ROADMAP,
   aber ohne die Warteschlange ist der Failover nicht nutzlich).
 
-## 6. Offene Fragen (Entscheid-Checkpunkte)
+## 6. Kritische Hinterfrage der Skalierungsanalyse
+
+Jede obige Position ist eine These; dieser Abschnitt prueft sie an den Voraussetzungen,
+unter denen sie gilt, und benennt, was nicht bewiesen ist. Ziel: keine These uebernehmen,
+die aus dem Code nicht folgt.
+
+- **Zahlen sind Simulation, keine Messung.** Die Werte `690 ms` / `1090 ms`
+  stammen aus `docs/15-latenz.md` (Simulationsausgabe, `gw-contactcenter sim`)
+  mit festen Mock-Verzoegern (120 ms ASR, 110 ms erstes Token, 15 ms pro Token,
+  120 ms TTS). Sie belegen die *Richtung* der Abhaengigkeit vom Streaming-ASR,
+  nicht einen auf Zielhardware gemessenen Wert. Vor jeder Beschaffung muss die
+  Simulation durch `gw-contactcenter latenz-messen` ersetzt werden.
+
+- **"Ein Thread pro Anruf" ueberzeichnet den Engpass (2.2).** Der eigentliche
+  Flaschenhals ist nicht der Thread selbst, sondern die LLM/ASR-Backend-Anbindung,
+  die pro Thread blockiert. Ein Thread-Modell skaliert, solange die Backends
+  skalieren; ohne gemeinsame Grenze (Cap per Default **aus**, `max_sitzungen=0`,
+  `server.py:79/434`) waechst die Last ungebremst. Die Backpressure-Warteschlange
+  loest daher zwei Probleme auf einmal: sie ersetzt den 503 *und* setzt eine
+  Grenze, wo jetzt keine ist.
+
+- **Gemeinsamer Sitzungszaehler ist kein Optimierungs-Vorschlag, sondern eine
+  Voraussetzung fuer Horizontalite.** `AKTIV` ist prozesslokal (`server.py:61`);
+  ohne einen ueber Prozesse geteilten Zaehler ist `max_sitzungen` nur pro Instanz
+  korrekt und der 2.2-Hebel unvollstaendig. Der gemeinsame Zaehler gehoert daher
+  zum selben Ticket wie die Backpressure-Warteschlange, nicht nebenbei.
+
+- **Kostenzaehler teilt das Tageslimit.** `Kostenzaehler(tageslimit=50.0)`
+  (`gateway.py:109`, Default 50.0; `LLMGateway` Default ebenfalls 50.0,
+  Zeile 220) ist pro Gateway, aber wird in
+  `LLMGateway` mit anderen Gateways geteilt (`gateway.py:225`). Das Tageslimit ist
+  also kein pro-Backend-Budget, sondern ein gemeinsames; bei mehreren Backends pro
+  Region muss klargestellt werden, ob je Region oder je Instanz gezaehlt wird.
+
+- **Erlang-Modell ist ein M/M/n-Ansatz mit bekannten Grenzen (2.8).**
+  Poisson-Ankuenfte und exponentiell verteilte AHT sind die Modellannahmen
+  (`warteschlange.py`, arXiv:1307.2968, Garnett/Mandelbaum 2002). Sie sind fuer
+  gleichmaessige Last brauchbar, brechen aber bei Rukaufwellen, Schichten und
+  Skill-Based Routing. Das ist keine Kritik am Code, sondern an der
+  Modellvalidierung: ein Stress-Test mit erhoehtem `lambda` und erhohter AHT ist
+  noetig, bevor auf die Ergebnisse gebaut wird.
+
+- **GPU-Sizing unterstellt ideale Tensor-Parallelitaet (2.6).** `sizing.py`
+  teilt die KV-Koepfe (Zeile 299) und rechnet pro Strom `<= Bandbreite /
+  (Gewichte + aktive x Kontext x KV/Token)`. Die Rechnung ist eine obere Grenze;
+  reale Effizienz (Kommunikation, Graphen, Reserve 1.5 GiB pro Karte, Zeile 234)
+  senkt sie. Der Lasttest auf Zielhardware ersetzt die Rechnung, er bestaetigt
+  sie nicht.
+
+- **`Geteilt`-Objekt ist pro `bedienen`-Aufruf, nicht global.** Es wird pro
+  Server-Start erzeugt (`server.py:431`) und allen Sitzungen dieses Starts
+  uebergeben (Zeile 441). Fuer Horizontalite ueber Prozesse bleibt es trotzdem
+  prozesslokal; das ist korrekt fuer einen Prozess, aber es ist *nicht* der
+  ueber Instanzen gemeinsame Zustand, den 2.2 fuer Horizontalite braucht.
+
+- **Audit-Anker ist bereits angelegt, aber nicht aktiv (2.7).**
+  `audit.py:letzter_pruefwert` (Zeile 127) liefert den Wert *fuer* einen externen
+  Anker, es fehlt aber der Export (WORM/Registry). Die Skalierung des Audits ist
+  also ein Betriebs-Problem, kein Code-Defizit; das muss in der ROADMAP als
+  Betriebs-Punkt stehen.
+
+Diese kritischen Nachfragen begruenden, warum die in Section 5 genannten
+Betriebsmassnahmen nicht als lose To-Dos, sondern als zusammenhoerende Punkte in
+der [ROADMAP](ROADMAP.md) stehen -- konkret: Backpressure-Warteschlange,
+gemeinsamer Sitzungszaehler, externer Audit-Anker und Skill-Based Routing mit
+Schichtplanung.
+
+## 7. Offene Fragen (Entscheid-Checkpunkte)
 
 | # | Frage | Warum |
 |---|---|---|
@@ -259,7 +337,7 @@ ergaenzt werden:
 | 7 | Welche Schichtplanung (Stundenstufen, Pausen, Schulung)? | Bestimmt die Erlang-C-Rechnung ueber den Tag. |
 | 8 | Welche Rukaufwellen sind zu erwarten (Werbung, Stoerung)? | Bestimmt den Stress-Test. |
 
-## 7. Lesart
+## 8. Lesart
 
 Dieses Dossier ist keine To-Do-Liste; es ist eine Analyse. Jede Position zeigt
 auf die Stelle im Code, die den Engpass erzeugt, und auf den Hebel in der
