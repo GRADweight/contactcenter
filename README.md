@@ -208,6 +208,7 @@ Betrieb, Überwachung und Störungen: [`docs/10-betrieb-ops.md`](docs/10-betrieb
 | [14 Full-Duplex](docs/14-dessa-und-full-duplex.md) | Speech-to-Speech-Modelle |
 | [15 Latenz](docs/15-latenz.md) | Budget, Simulation, Messung |
 | [16 Leitplanken](docs/16-leitplanken.md) | Schichten, Holdout-Messung, Audit |
+| [Bottlenecks und Skalierung](BOTTLENECKS.md) | Offene Flaschenhalse, Massstab, Hebel |
 
 ## Grenzen
 
@@ -231,6 +232,10 @@ Betrieb, Überwachung und Störungen: [`docs/10-betrieb-ops.md`](docs/10-betrieb
   (revDSG, Branchenrecht, EU AI Act bei EU-Bezug), klärt der Betreiber mit Fachleuten.
 - **Wissensbasis und CRM sind Demo-Objekte** (`DemoBackend`); echte Anbindungen sind
   Projektarbeit.
+- **Die Skalierung ist nicht ausgereizt.** Offene Flaschenhalse und die Schwierigkeiten
+  von wenigen auf viele gleichzeitige Anrufe stehen in
+  [`BOTTLENECKS.md`](BOTTLENECKS.md) (Streaming-ASR, Session-Pool, Wissensbasis, GPU,
+  Telemetrie, Audit), geordnet nach dem Massstab, an dem jeder Engpass auftritt.
 
 ## Entwicklung
 

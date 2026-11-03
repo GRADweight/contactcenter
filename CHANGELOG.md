@@ -3,6 +3,16 @@
 Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
 [Semantic Versioning](https://semver.org/lang/de/).
 
+## [Unreleased]
+
+### Hinzugefügt
+
+- `BOTTLENECKS.md`: die offenen Flaschenhalse des Projekts und die Schwierigkeiten
+  bei der Skalierung von wenigen auf viele gleichzeitige Anrufe, jede Position
+  verweist auf die Stelle im Code (Modul und Funktion) und auf den Hebel in der
+  [ROADMAP](ROADMAP.md). Keine neuen Messungen; alle Zahlen sind Annahmen,
+  Simulationen oder Auszug aus dem Code.
+
 ## [2.1.0] - 2026-10-27
 
 ### Geändert
