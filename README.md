@@ -208,6 +208,7 @@ Betrieb, Überwachung und Störungen: [`docs/10-betrieb-ops.md`](docs/10-betrieb
 | [14 Full-Duplex](docs/14-dessa-und-full-duplex.md) | Speech-to-Speech-Modelle |
 | [15 Latenz](docs/15-latenz.md) | Budget, Simulation, Messung |
 | [16 Leitplanken](docs/16-leitplanken.md) | Schichten, Holdout-Messung, Audit |
+| [17 Telefonie und Streaming](docs/17-telefonie-und-streaming.md) | Audio-Transport und Pipeline im Code |
 | [Bottlenecks und Skalierung](BOTTLENECKS.md) | Offene Flaschenhalse, Massstab, Hebel |
 
 ## Grenzen

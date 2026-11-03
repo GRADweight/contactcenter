@@ -7,6 +7,12 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- `docs/17-telefonie-und-streaming.md`: code-naher Durchgang des Audio-Transports
+  (Genesys Audio Connector, G.711 mu-law in `audio.py`, Protokoll-Zustandsmaschine
+  in `audiohook.py`, RFC 9421-Signatur in `signatur.py`, DTMF/Playback/Barge-in)
+  und der Streaming-Pipeline (`vad.py`, `turn.py`, `pipeline.py`, `server.py`),
+  jede Aussage mit Modul und Funktion belegt. Kurz englischer Abstract,
+  deutscher Fachtext.
 - `BOTTLENECKS.md`: die offenen Flaschenhalse des Projekts und die Schwierigkeiten
   bei der Skalierung von wenigen auf viele gleichzeitige Anrufe, jede Position
   verweist auf die Stelle im Code (Modul und Funktion) und auf den Hebel in der
